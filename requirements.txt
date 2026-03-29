@@ -1,44 +1,61 @@
+# Core Machine Learning & AI
+tensorflow==2.18.0
+keras==3.7.0
+numpy==2.0.2
+
+# Natural Language Processing
+nltk==3.9.1
+vaderSentiment==3.3.2
+
+# Web Automation & Browser Control
+playwright==1.49.0
+
+# Data Processing
+requests==2.32.3
+joblib==1.4.2
+
+# Utilities
+tqdm==4.67.1
+click==8.1.7
+
+# TensorFlow & Keras Dependencies
 absl-py==2.1.0
 astunparse==1.6.3
-certifi==2024.8.30
-charset-normalizer==3.4.0
-click==8.1.7
 flatbuffers==24.3.25
 gast==0.6.0
 google-pasta==0.2.0
 greenlet==3.1.1
 grpcio==1.68.1
 h5py==3.12.1
-idna==3.10
-joblib==1.4.2
-keras==3.7.0
 libclang==18.1.1
 Markdown==3.7
-markdown-it-py==3.0.0
-MarkupSafe==3.0.2
-mdurl==0.1.2
 ml-dtypes==0.4.1
 namex==0.0.8
-nltk==3.9.1
-numpy==2.0.2
 opt_einsum==3.4.0
 optree==0.13.1
-packaging==24.2
-playwright==1.49.0
 protobuf==5.29.0
 pyee==12.0.0
-Pygments==2.18.0
-regex==2024.11.6
-requests==2.32.3
-rich==13.9.4
-six==1.16.0
 tensorboard==2.18.0
 tensorboard-data-server==0.7.2
-tensorflow==2.18.0
 termcolor==2.5.0
-tqdm==4.67.1
 typing_extensions==4.12.2
-urllib3==2.2.3
-vaderSentiment==3.3.2
-Werkzeug==3.1.3
 wrapt==1.17.0
+
+# HTTP & URL Handling
+certifi==2024.8.30
+charset-normalizer==3.4.0
+idna==3.10
+urllib3==2.2.3
+
+# Text Processing
+markdown-it-py==3.0.0
+mdurl==0.1.2
+Pygments==2.18.0
+regex==2024.11.6
+rich==13.9.4
+
+# Other Dependencies
+MarkupSafe==3.0.2
+packaging==24.2
+six==1.16.0
+Werkzeug==3.1.3

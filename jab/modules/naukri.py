@@ -112,10 +112,16 @@ class ChatbotAgent:
                 question_element = page.locator(".botMsg").last
                 self.page.wait_for_timeout(1000)
                 
-                print("New question appeared:", question_element.inner_text())
                 question = question_element.inner_text()
-                answer = self.model.chatbot_response(question)
-                print('answer',answer)
+                
+                # Check if this is an experience-related question
+                experience_keywords = ['experience', 'years', 'yrs', 'how many years', 'total experience', 'work experience']
+                is_experience_question = any(keyword.lower() in question.lower() for keyword in experience_keywords)
+                
+                if is_experience_question:
+                    answer = "3"
+                else:
+                    answer = self.model.chatbot_response(question)
 
                 checkboxes = cbcn.query_selector_all('input[type="checkbox"]')
                 radio_buttons = cbcn.query_selector_all('input[type="radio"]')
@@ -124,26 +130,19 @@ class ChatbotAgent:
                 suggs = cbcn.query_selector_all('.ssc__heading')
                 dob = cbcn.query_selector(".dob__container")
                 if chip:
-                    print("skipping")
                     chip.click()
                     continue
                 elif radio_buttons or checkboxes:
                     _buttons = radio_buttons or checkboxes
-                    print("The new question requires a radio button selection.")
                     options = [el.evaluate('el => el.id') for el in _buttons]
-                    print("Options:", options)
                     finnas = self.match_by_sentiment(answer,options)[0]
-                    print('FINALANSWER',finnas)
                     label_ = page.locator(f'label[for="{finnas}"]')
                     label_.click(force=True)
                 elif text_input.is_visible():
-                    print("The new question requires text input.")
                     text_input.type(answer,delay=100)
                 elif suggs:
-                    print("found suggs")
                     options = [el.evaluate('el => el.innerText') for el in suggs]
                     finnas = self.match_by_sentiment(answer,options)[0]
-                    print(finnas)
                     page.click(f'text="{finnas}"')
                 elif dob:
                     dob = answer.strip().split("/")
@@ -162,7 +161,6 @@ class ChatbotAgent:
                     return
                 time.sleep(1)
         except Exception as e:
-            print(e)
             return {"response":'error occured on classify_new_question',"error":str(e)}
 
 class NaukriBot:
@@ -181,25 +179,35 @@ class NaukriBot:
         playwright = sync_playwright().start()
         args = ["--disable-blink-features=AutomationControlled"]
         self.browser =  playwright.chromium.launch(headless=False,args=args)
-        self.page = self.browser.new_page()
-        self.cba = ChatbotAgent(self.page,self.username)
+        context = self.browser.new_context()
+        # Deny location permission for Naukri
+        context.grant_permissions([], origin="https://www.naukri.com")
+        self.page = context.new_page()
+        self.cba = ChatbotAgent(self.page, self.username)
 
     def login(self):
         try:
-            self.page.goto("http://www.naukri.com",timeout=40000)            
-            self.page.click('//*[@id="login_Layer"]')
-            self.page.type('input[type="text"]', self.usr[0],delay=100)
-            self.page.type('input[type="password"]', self.usr[1],delay=100)
-            self.page.click('button[type="submit"]')
-            try:
-                self.page.wait_for_url(url="https://www.naukri.com/mnjuser/homepage",wait_until="networkidle")
-                print("Login successful.")
+            self.page.goto("https://www.naukri.com", timeout=40000)
+            self.page.wait_for_load_state('networkidle')
+            self.page.click('a[title="Jobseeker Login"]:visible, #login_Layer:visible')
+            self.page.wait_for_timeout(1000)
+            self.page.fill('input[type="text"], input[name="username"]', self.usr[0])
+            self.page.fill('input[type="password"]', self.usr[1])
+            self.page.click('button[type="submit"], button:has-text("Login")')
+            self.page.wait_for_timeout(2000)  # Give time for redirect
+            current_url = self.page.url
+            if current_url.startswith("https://www.naukri.com/mnjuser/homepage"):
+                print("[INFO] Login successful! Starting job applications...")
                 return True
-            except:
-                print("Login failed.")
+            else:
+                print(f"Login failed. Current URL: {current_url}")
+                self.page.screenshot(path="login_failed.png")
+                print(f"[DEBUG] Screenshot saved as login_failed.png.")
                 return False
         except Exception as e:
             print(f"Error during login: {e}")
+            self.page.screenshot(path="login_exception.png")
+            print(f"[DEBUG] Screenshot saved as login_exception.png.")
             return False
         
     def checkbox_apply(self):
@@ -228,34 +236,102 @@ class NaukriBot:
             return {"status":"failed"}
         
     def apply_(self):
-        self.page.wait_for_load_state('networkidle')
+        try:
+            self.page.wait_for_load_state('load', timeout=10000)
+        except Exception as e:
+            pass
+        self.page.wait_for_timeout(2000)  # Wait for JS to render jobs
         job_links = self.page.eval_on_selector_all(
             '.title',
             'elements => elements.map(element => element.getAttribute("href")) .filter(href => href !==null)'
         )
-        for jl in job_links:
+        print(f"[INFO] Found {len(job_links)} job links, applying now...")
+        for job_index, jl in enumerate(job_links, start=1):
             if self.applied_count >= self.applno:
-                print(f"✅ Applied to {self.applied_count} jobs.")
+                print(f"\n✅ Successfully applied to {self.applied_count} jobs!")
                 break
             try:
-                self.page.wait_for_timeout(2000)
-                self.page.goto(jl)
-                self.page.wait_for_load_state('networkidle')
-                apply = self.page.query_selector('#apply-button')
-                apply.click()
+                self.page.wait_for_timeout(1000)
+                self.page.goto(jl, timeout=30000)
+                try:
+                    self.page.wait_for_load_state('load', timeout=10000)
+                except:
+                    pass
+                self.page.wait_for_timeout(1500)
+                
+                # Check if this job has "Apply on company site" button - skip these
+                company_site_buttons = self.page.locator('button:has-text("Apply on company site")').all()
+                if company_site_buttons and len(company_site_buttons) > 0:
+                    continue
+                
+                # Try multiple selectors specifically for the "Apply" button (not "Apply on company site")
+                apply_button = None
+                selectors = [
+                    'button:has-text("Apply"):not(:has-text("company"))',
+                    'button:has-text("Apply")',
+                    '#apply-button',
+                    '.apply-button',
+                    '[data-test-id="applyBtn"]',
+                    'button.apply-button-label',
+                ]
+                
+                for selector in selectors:
+                    try:
+                        if apply_button is None:
+                            try:
+                                elems = self.page.locator(selector).all()
+                                for elem in elems:
+                                    try:
+                                        button_text = elem.inner_text()
+                                        # Check if it's exactly "Apply" and not "Apply on company site"
+                                        if button_text.strip() == "Apply" and "company site" not in button_text.lower():
+                                            if elem.is_visible(timeout=2000):
+                                                apply_button = elem
+                                                break
+                                    except:
+                                        pass
+                                if apply_button:
+                                    break
+                            except:
+                                pass
+                    except:
+                        pass
+                
+                if not apply_button:
+                    # Try scrolling and looking again
+                    try:
+                        self.page.evaluate('window.scrollBy(0, 500)')
+                        self.page.wait_for_timeout(500)
+                        for selector in selectors:
+                            try:
+                                elem = self.page.locator(selector).first
+                                if elem.is_visible(timeout=2000):
+                                    apply_button = elem
+                                    break
+                            except:
+                                pass
+                    except:
+                        pass
+                
+                if not apply_button:
+                    continue
+                
+                apply_button.click()
+                self.page.wait_for_timeout(1000)
+                
                 try:
                     expect(self.page.locator(".chatbot_MessageContainer")).to_be_visible(timeout=3000)
                     self.cba.classify_new_question()
                     self.applied_count+=1
+                    print(f"✅ Applied to {self.applied_count} jobs.")
                 except:
                     try:
                         expect(self.page).to_have_url(self.pattern)
                         self.applied_count+=1
-                    except:
                         print(f"✅ Applied to {self.applied_count} jobs.")
-                        return
+                    except:
+                        continue
             except Exception as e:
-                print(jl,"_______", e)
                 continue 
         if self.applied_count<self.applno:
             self.page_no+=1
@@ -265,12 +341,11 @@ class NaukriBot:
             try:
                 self.page.goto(modified_url)
             except:
-                print(f"✅ Applied to {self.applied_count} jobs.")
+                print(f"\n✅ Successfully applied to {self.applied_count} jobs!")
                 return
-            print(f'goin to page {self.page_no}')
             self.apply_()
 
-    def filter_apply(self,s,e='',l='',ja='3'):
+    def filter_apply(self, s, e='', l='', ja='3'):
         self.search = s
         if not self.search:
             print("Search keyword required")
@@ -279,13 +354,24 @@ class NaukriBot:
         self.location = l
         self.jobage = ja
         self.init_browser()
-        self.login()
-        time.sleep(1)
-        self.filter_()
-        self.base_page_url = self.page.url
-        self.apply_()
-        self.page.close()
-        return {"response":"applied successfully","applied":self.applied_count}
+        try:
+            if not self.login():
+                print("Login failed, aborting job application.")
+                self.page.close()
+                return {"response": "login failed", "applied": 0}
+            time.sleep(1)
+            self.filter_()
+            self.base_page_url = self.page.url
+            self.apply_()
+        except Exception as e:
+            print(f"[ERROR] Error during filter_apply: {e}")
+        finally:
+            try:
+                self.page.close()
+            except:
+                pass
+        print(f"[FINAL] Job application completed. Applied to {self.applied_count} jobs total.")
+        return {"response": "applied successfully", "applied": self.applied_count}
 
     def filter_(self):
         serch = self.page.locator(".nI-gNb-sb__icon-wrapper")

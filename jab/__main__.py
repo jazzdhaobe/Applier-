@@ -16,21 +16,18 @@ def main():
     username = args.email
     if args.apply:
         filt = args.filters
-        print("filters",filt)
-        password = getpass("Password: ")
-        number = int(input("Number of jobs to apply (default=10): ") or 10)
+        # Hardcoded parameters to avoid terminal prompts
+        password = "Jd3089.!"
+        number = 12
+        search = "fullstack developer, Ai Ml Engineer, Backend Development, Node Js Backend Developer, Mern Stack Developer, Mean Stack Developer, Senior Software Engineer"
+        experience = 2
+        location = "Pune"
+        jobAge = 7
         nb = NaukriBot(email,password,username,number)
         if filt:
-            print("Choose your filters to apply::::")
-            search = input("Job search criteria or keyword to search for (required if applying filters): ")
-            experience = input("Years of experience (optional, leave blank if none): ")
-            location = input("Job location (optional, leave blank if none): ")
-            jobAge = input("Age of job posting in days (default set to 3 days): ")
-            experience = int(experience) if experience else None
-            jobAge = int(jobAge) if jobAge else None
             nb.filter_apply(search,experience,location,jobAge)
         else:
-            tab = input(f"Choose from these options to start: {nb.tabs} : ")
+            tab = "apply"
             nb.start_apply(tab)
     elif args.train:
         chb = ChatbotBuild(email)

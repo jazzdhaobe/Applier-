@@ -1,19 +1,85 @@
 {
-    "Salutation":"",
-    "Full name": "",
-    "First name": "",
-    "Last name": "",
-    "Location": "",
-    "Total experience": "",
-    "Expected salary": "",
-    "Salary": "",
-    "Mobile": "",
-    "Email": "",
-    "Notice period": "",
+    "Salutation": "Mr.",
+    "Full name": "Jayesh Dhobe",
+    "First name": "Jayesh",
+    "Last name": "Dhobe",
+    "Location": "Pune, 411045",
+    "Total experience": "2.1 Years",
+    "Expected salary": "10 LPA",
+    "Salary": "5.95 LPA",
+    "Mobile": "+91 8788367035",
+    "Email": "jayeshdhobe7@gmail.com",
+    "Notice period": "30 Days",
     "Skills": {
-
+        "Programming Languages": [
+            "JavaScript",
+            "TypeScript",
+            "Python",
+            "SQL"
+        ],
+        "Frontend": [
+            "React",
+            "Next.js",
+            "Angular",
+            "Micro-Frontend Architecture",
+            "Responsive UI Development"
+        ],
+        "Backend": [
+            "Node.js",
+            "Express.js",
+            "Flask",
+            "FastAPI",
+            "REST API Development",
+            "JWT Authentication",
+            "Role-Based Access Control (RBAC)",
+            "API Gateway Design",
+            "Microservices Architecture"
+        ],
+        "Databases": [
+            "MongoDB",
+            "PostgreSQL",
+            "MySQL",
+            "Firebase",
+            "IndexedDB",
+            "PGVector",
+            "FAISS (Vector DB)"
+        ],
+        "AI & Machine Learning": [
+            "LangChain",
+            "LangGraph",
+            "LlamaIndex",
+            "Retrieval-Augmented Generation (RAG)",
+            "LLM Integration",
+            "Prompt Engineering",
+            "Semantic Search",
+            "Embedding Models",
+            "Conversational AI",
+            "AI Application Development"
+        ],
+        "Cloud & DevOps": [
+            "AWS",
+            "Docker",
+            "Terraform",
+            "GitHub Actions",
+            "CI/CD Pipelines",
+            "CloudWatch",
+            "OpenSearch"
+        ],
+        "Testing": [
+            "Jest",
+            "PyTest",
+            "Unit Testing",
+            "Integration Testing"
+        ],
+        "Tools & Others": [
+            "Git",
+            "Vite",
+            "MKDocs",
+            "Agile Methodology",
+            "System Design Basics"
+        ]
     },
-    "Date of birth": "",
-    "Gender": "",
-    "Preferred work location": ""
+    "Date of birth": "30/05/2002",
+    "Gender": "Male",
+    "Preferred work location": "Pune, Nagpur, Mumbai"
 }
