@@ -9,6 +9,22 @@ from nltk.stem import WordNetLemmatizer
 
 with open("./jab/data/user_data.json","r") as file:
     user_data = json.load(file)
+
+
+def ensure_nltk_resources():
+    resource_checks = [
+        ("tokenizers/punkt", "punkt"),
+        ("tokenizers/punkt_tab", "punkt_tab"),
+        ("corpora/wordnet", "wordnet"),
+    ]
+
+    for resource_path, resource_name in resource_checks:
+        try:
+            nltk.data.find(resource_path)
+        except LookupError:
+            nltk.download(resource_name, quiet=True)
+
+
 def training(data):
     def skills(skill,exp):
         op = {
@@ -135,6 +151,7 @@ class ChatbotBuild:
         self.classes = []
         self.documents = []
         self.model = None
+        ensure_nltk_resources()
         self.training_data = training(self.user_data)
         self.load_data()
         self.preprocess_data()

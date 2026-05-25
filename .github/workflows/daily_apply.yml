@@ -39,11 +39,14 @@ jobs:
         run: |
           python - <<'PY'
           import nltk
-          for pkg in ['punkt','wordnet']:
+          for pkg in ['punkt', 'punkt_tab', 'wordnet']:
               try:
-                  nltk.data.find(f'tokenizers/{pkg}')
+                  if pkg == 'wordnet':
+                      nltk.data.find('corpora/wordnet')
+                  else:
+                      nltk.data.find(f'tokenizers/{pkg}')
               except LookupError:
-                  nltk.download(pkg)
+                  nltk.download(pkg, quiet=True)
           PY
 
       - name: Train model if missing
