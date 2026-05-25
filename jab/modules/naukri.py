@@ -162,7 +162,7 @@ class ChatbotAgent:
             return {"response":'error occured on classify_new_question',"error":str(e)}
 
 class NaukriBot:
-    def __init__(self, usreml, usrpas, username, number=10, headless=False):
+    def __init__(self, usreml, usrpas, username, number=10, headless=False, otp=None):
         self.browser = None
         self.page = None
         self.usr = [usreml, usrpas]
@@ -173,6 +173,7 @@ class NaukriBot:
         self.tabs = ["profile", "apply", "preference", "similar_jobs"]
         self.pattern = re.compile(r'https://.*/myapply/saveApply\?strJobsarr=')
         self.headless = headless
+        self.otp = otp
 
     def init_browser(self):
         playwright = sync_playwright().start()
@@ -184,31 +185,82 @@ class NaukriBot:
         self.page.set_default_timeout(30000)
         self.cba = ChatbotAgent(self.page, self.username)
 
+    def dismiss_cookie_banner(self):
+        selectors = [
+            'text=Got it',
+            'button:has-text("Got it")',
+            'button[aria-label="Close"]',
+        ]
+        for selector in selectors:
+            try:
+                locator = self.page.locator(selector)
+                if locator.first.is_visible(timeout=2000):
+                    locator.first.click()
+                    self.page.wait_for_timeout(500)
+                    return True
+            except Exception:
+                continue
+        return False
+
     def login(self):
         try:
-            self.page.goto("https://www.naukri.com", timeout=40000)
-            self.page.wait_for_load_state('networkidle')
-            self.page.click('a[title="Jobseeker Login"]:visible, #login_Layer:visible')
-            self.page.wait_for_timeout(1000)
-            self.page.fill('input[type="text"], input[name="username"]', self.usr[0])
-            self.page.fill('input[type="password"]', self.usr[1])
-            self.page.click('button[type="submit"], button:has-text("Login")')
-            self.page.wait_for_timeout(2000)  # Give time for redirect
+            self.page.goto("https://login.naukri.com/nLogin/Login.php", timeout=40000)
+            self.page.wait_for_load_state('domcontentloaded')
+            self.page.wait_for_selector(
+                '#usernameField, input[placeholder="Enter Email ID / Username"], input[placeholder="Enter your active Email ID / Username"]',
+                timeout=15000,
+            )
+            self.dismiss_cookie_banner()
+
+            username = self.page.locator(
+                '#usernameField, input[placeholder="Enter Email ID / Username"], input[placeholder="Enter your active Email ID / Username"]'
+            ).first
+            password = self.page.locator(
+                '#passwordField, input[placeholder="Enter Password"], input[placeholder="Enter your password"]'
+            ).first
+            submit = self.page.locator('button.blue-btn, button[type="submit"]').first
+
+            username.fill(self.usr[0])
+            password.fill(self.usr[1])
+            submit.click()
+            self.page.wait_for_timeout(5000)
+
             current_url = self.page.url
             if current_url.startswith("https://www.naukri.com/mnjuser/homepage"):
                 print("[INFO] Login successful! Starting job applications...")
                 return True
-            else:
-                print(f"Login failed. Current URL: {current_url}")
+
+            invalid_details = self.page.locator('text=Invalid details. Please check the Email ID - Password combination.').is_visible(timeout=3000)
+            if invalid_details:
+                print("Login failed: invalid email/password combination.")
                 self.page.screenshot(path="login_failed.png")
-                print(f"[DEBUG] Screenshot saved as login_failed.png.")
+                print("[DEBUG] Screenshot saved as login_failed.png.")
                 return False
+
+            otp_input = self.page.locator('input[autocomplete="one-time-code"], input[placeholder*="OTP" i], input[type="tel"]').first
+            if otp_input.is_visible(timeout=3000):
+                if not self.otp:
+                    print("Login requires OTP. Pass --otp or set JOBAUTO_OTP to continue.")
+                    self.page.screenshot(path="login_failed.png")
+                    print("[DEBUG] Screenshot saved as login_failed.png.")
+                    return False
+                otp_input.fill(self.otp)
+                self.page.locator('button[type="submit"], button.blue-btn').first.click()
+                self.page.wait_for_timeout(5000)
+                if self.page.url.startswith("https://www.naukri.com/mnjuser/homepage"):
+                    print("[INFO] Login successful! Starting job applications...")
+                    return True
+
+            print(f"Login failed. Current URL: {current_url}")
+            self.page.screenshot(path="login_failed.png")
+            print("[DEBUG] Screenshot saved as login_failed.png.")
+            return False
         except Exception as e:
             print(f"Error during login: {e}")
             self.page.screenshot(path="login_exception.png")
             print(f"[DEBUG] Screenshot saved as login_exception.png.")
             return False
-        
+
     def checkbox_apply(self):
         try:
             checkboxes = self.page.locator('.naukicon-ot-checkbox').element_handles()

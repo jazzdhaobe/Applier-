@@ -49,6 +49,7 @@ def resolve_config(args):
             args.job_age, parse_optional_int(get_env("JOBAUTO_JOBAGE"), 7)
         ),
         "headless": args.headless,
+        "otp": args.otp or get_env("JOBAUTO_OTP"),
     }
 
 
@@ -65,6 +66,7 @@ def main():
     parser.add_argument("--job-age", help="max job age in days")
     parser.add_argument("--number", help="number of applications to attempt")
     parser.add_argument("--headless", action="store_true", help="run browser in headless mode")
+    parser.add_argument("--otp", help="OTP code to use if Naukri requires a second-step verification")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -95,6 +97,7 @@ def main():
         config["username"],
         config["number"],
         headless=config["headless"],
+        otp=config["otp"],
     )
 
     if args.filters:
