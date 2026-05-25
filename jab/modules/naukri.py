@@ -213,27 +213,39 @@ class NaukriBot:
         try:
             checkboxes = self.page.locator('.naukicon-ot-checkbox').element_handles()
             print(f"Found {len(checkboxes)} checkboxes.")
-            if not len(checkboxes)==0:          
+            if not len(checkboxes) == 0:
                 lcbxs = 0
                 for checkbox in checkboxes[:5]:
-                    checkbox.click()
-                    lcbxs += 1                
+                    checkbox.scroll_into_view_if_needed()
+                    checkbox.click(force=True)
+                    lcbxs += 1
                 apply_button = self.page.locator('.multi-apply-button')
-                apply_button.click()
+                try:
+                    with self.page.expect_response(
+                        lambda response: "apply-workflow" in response.url,
+                        timeout=10000,
+                    ) as response_info:
+                        apply_button.click(force=True)
+                    response = response_info.value
+                    if response.status == 403:
+                        print("[INFO] Daily quota exceeded. Stopping application run.")
+                        return {"status": "quota_exceeded", "clicked": lcbxs}
+                except Exception:
+                    pass
                 try:
                     expect(self.page.locator(".chatbot_MessageContainer")).to_be_visible(timeout=3000)
                 except:
                     try:
                         expect(self.page).to_have_url(self.pattern)
-                        return {"status":"done","clicked":lcbxs}
+                        return {"status": "done", "clicked": lcbxs}
                     except:
                         raise
-                return {"status":"underway","found":len(checkboxes),"clicked":lcbxs}
+                return {"status": "underway", "found": len(checkboxes), "clicked": lcbxs}
             else:
-                return {"status":"finished","found":len(checkboxes),"clicked":0}
+                return {"status": "finished", "found": len(checkboxes), "clicked": 0}
         except Exception:
-            return {"status":"failed"}
-        
+            return {"status": "failed"}
+
     def apply_(self):
         try:
             self.page.wait_for_load_state('load', timeout=10000)
@@ -412,6 +424,10 @@ class NaukriBot:
                 print(f"finished daily quota with {self.applied_count} jobs")
                 self.close()
                 return {"response":"quota finished","applied":self.applied_count}
+            elif cbapl["status"] == 'quota_exceeded':
+                print("[INFO] Naukri reported that the daily quota has been exceeded.")
+                self.close()
+                return {"response":"quota exceeded","applied":self.applied_count}
             elif cbapl["status"] == 'done':
                 self.applied_count += cbapl["clicked"]
                 self.bot_actions()
@@ -425,7 +441,7 @@ class NaukriBot:
                     print("An error occured answering naukri questions :===>",e)
                     self.close()
                     return {"response":"error on botactions","error":str(e)}
-            elif cbapl['status']=="finished":
+            elif cbapl['status'] == "finished":
                 self.tabIndex += 1
                 self.tab = self.tabs[self.tabIndex]
                 self.bot_actions()
