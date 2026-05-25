@@ -41,6 +41,15 @@ The repository includes:
 - `scripts/setup_daily_task.ps1` to create a Windows Task Scheduler task at 9:00 AM
 - `scripts/run_daily_apply.ps1` to launch the application and write logs under `logs/`
 
+### Run in the cloud (recommended if your laptop is off)
+
+You can run the applier from GitHub Actions so it runs every day even if your laptop is closed.
+
+- Add two repository secrets: `JOBAUTO_EMAIL` and `JOBAUTO_PASSWORD` (Repository → Settings → Secrets).
+- The workflow is at `.github/workflows/daily_apply.yml` and runs daily at 09:00 IST by default. It can also be triggered manually via the Actions tab.
+
+Note: Playwright runs headless on the Actions runner; ensure your model and training data are available in the repository or recreated during the run.
+
 The task uses a secure credential file in `%APPDATA%\jobautobot\credentials.xml` and a persistent email/search configuration in Windows environment variables.
 
 ## Validation
