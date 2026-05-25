@@ -196,13 +196,29 @@ class NaukriBot:
         args = ["--disable-blink-features=AutomationControlled"]
         self.browser = self.playwright.chromium.launch(headless=self.headless, args=args)
         context_kwargs = {}
-        if self.storage_state_path and os.path.exists(self.storage_state_path):
+        if self.has_valid_storage_state():
             context_kwargs["storage_state"] = self.storage_state_path
         self.context = self.browser.new_context(**context_kwargs)
         self.context.grant_permissions([], origin="https://www.naukri.com")
         self.page = self.context.new_page()
         self.page.set_default_timeout(30000)
         self.cba = ChatbotAgent(self.page, self.username)
+
+    def has_valid_storage_state(self):
+        if not self.storage_state_path:
+            return False
+
+        path = Path(self.storage_state_path)
+        if not path.exists() or not path.is_file():
+            return False
+
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            return isinstance(data, dict)
+        except Exception as exc:
+            print(f"[WARN] Ignoring invalid storage state at {path}: {exc}")
+            return False
 
     def save_storage_state(self):
         if not self.context or not self.save_storage_state_path:

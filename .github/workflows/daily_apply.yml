@@ -40,7 +40,11 @@ jobs:
           JOBAUTO_STORAGE_STATE: ${{ secrets.JOBAUTO_STORAGE_STATE }}
         run: |
           mkdir -p .auth
-          printf '%s' "$JOBAUTO_STORAGE_STATE" > .auth/storage_state.json
+          if [ -n "$JOBAUTO_STORAGE_STATE" ]; then
+            printf '%s' "$JOBAUTO_STORAGE_STATE" > .auth/storage_state.json
+          else
+            rm -f .auth/storage_state.json
+          fi
 
       - name: Ensure NLTK resources
         run: |
