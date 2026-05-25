@@ -1,79 +1,68 @@
-# jobautobot
+# Auto-Job-Applier
 
-jobautobot is designed to help users find and apply jobs on Naukri platform by automating the whole process.
-It uses playwright for web automation tasks, and to answer questions while applying for jobs, it uses a Neural network model from tensorflow for classification trained upon user data.
+Auto-Job-Applier automates Naukri job applications with Playwright and a local chatbot model. The current setup is designed to run daily at 9:00 AM through Windows Task Scheduler.
 
-# Getting Started
+## Features
 
-### Prerequisites
-- Python
-- pip
-- venv
+- Daily non-interactive application flow
+- Headless browser execution for automation
+- Configurable search keywords, experience, location, and job age
+- Persisted training data and model under `jab/data/`
+- Scheduled runner and setup scripts for Windows
 
-### Installation
+## Setup
 
-step 1: Clone the repository
-```bash
-    git clone https://github.com/aman-dayal/jobautobot.git
-```
-step 2: Navigate to the folder containing the code  
-```bash
-cd jobautobot
-```
-step 3: create a virtual environment and activate it
+1. Create and activate the virtual environment.
+2. Install dependencies.
+3. Install the Chromium browser binary.
+4. Train the model once.
+5. Run the scheduler setup script.
 
-For linux
-```bash
-python3 -m venv jbvnv && source jbvnv/bin/activate
-```
-For Windows powershell
-```bash
-python -m venv jbvnv &&  jbvnv/scripts/activate.ps1
-```
-For Windows cmd
-```bash
-python -m venv jbvnv
-call jbvnv/scripts/activate
-```
-step 4: Install the required packages
-```bash
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-step 5: Install the required playwright packages and browser binaries
-```bash
-playwright install
-```
-or
-```bash
-playwright install --with-deps
-```
-or
-```bash
-playwright install chromium
-```
-### Usage
-
-Now that setup is complete next step is to train the model that will be used to answer questions while applying for jobs. Navigate to the folder jab/data/user_data.json and fillout the json with your data in the values corresponding to the keys.
-Keep the dob in the format DD/MM/YYYY .
-
-Finally its time to train the model using the data you just updated.
-
-Make sure you are in the root directory of the project and the virtual environment is activated.
-
-To train the model run:
-```bash
+python -m playwright install chromium
 python -m jab --email your-email@gmail.com --train
+powershell -ExecutionPolicy Bypass -File .\scripts\setup_daily_task.ps1
 ```
-Replace your-email@gmail.com with your actual email, this email is used to identify your trained model and data when sending out job applications. The model will be trained and saved in the jab/data/your-email@gmail.com models directory.
 
-You are all set and ready to send out your first application using jobautobot or jab. To send out a job application run:
-```bash
-python -m jab --email your-email@gmail.com --apply
-```
-If you would like to apply filters to search for the jobs run:
-```bash
-python -m jab --email your-email@gmail.com --apply --filters
-```
-follow along the prompts to put in your password and select the filters you would like to apply.
+## Manual run
 
-Complete documentation can be found here: https://aman-dayal.github.io/Documentation-for-JobAutobot
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m jab --email your-email@gmail.com --apply --headless
+```
+
+## Daily automation
+
+The repository includes:
+
+- `scripts/setup_daily_task.ps1` to create a Windows Task Scheduler task at 9:00 AM
+- `scripts/run_daily_apply.ps1` to launch the application and write logs under `logs/`
+
+### Run in the cloud (recommended if your laptop is off)
+
+You can run the applier from GitHub Actions so it runs every day even if your laptop is closed.
+
+- Add two repository secrets: `JOBAUTO_EMAIL` and `JOBAUTO_PASSWORD` (Repository → Settings → Secrets).
+- The workflow is at `.github/workflows/daily_apply.yml` and runs daily at 09:00 IST by default. It can also be triggered manually via the Actions tab.
+
+Note: Playwright runs headless on the Actions runner; ensure your model and training data are available in the repository or recreated during the run.
+
+The task uses a secure credential file in `%APPDATA%\jobautobot\credentials.xml` and a persistent email/search configuration in Windows environment variables.
+
+## Validation
+
+You can validate the launcher without opening the browser:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m jab --email your-email@gmail.com --dry-run
+```
+
+## Notes
+
+- The scheduler script will re-install Chromium if needed.
+- Logs for each run are stored in the `logs/` directory and are ignored by git.
+- The current defaults target 50 applications per run.

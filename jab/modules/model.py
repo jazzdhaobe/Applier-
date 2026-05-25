@@ -126,10 +126,10 @@ class ChatbotBuild:
     def __init__(self, username):
         self.username = username
         self.lemmatizer = WordNetLemmatizer()
-        self.ignore_words = ['?', '!', '.', ',']
+        self.ignore_words = set(['?', '!', '.', ','])
         self.user_data = user_data
         self.patterns = []
-        self.tags = []
+        self.tags = set()
         self.responses = {}
         self.words = []
         self.classes = []
@@ -140,54 +140,64 @@ class ChatbotBuild:
         self.preprocess_data()
         self.build_model()
 
-    def load_data(self):        
+    def load_data(self):
         for intent in self.training_data:
             for pattern in intent['patterns']:
                 word_list = nltk.word_tokenize(pattern)
                 self.patterns.append((word_list, intent['tag']))
-                if intent['tag'] not in self.tags:
-                    self.tags.append(intent['tag'])
+                self.tags.add(intent['tag'])
             self.responses[intent['tag']] = intent['answer']
     def preprocess_data(self):
+        words_temp = []
+        classes_set = set()
+        documents_lemma = []
+        
+        # Collect and lemmatize words once
         for pattern in self.patterns:
             for word in pattern[0]:
                 if word not in self.ignore_words:
-                    self.words.append(self.lemmatizer.lemmatize(word.lower()))
-            self.documents.append((pattern[0], pattern[1]))
-            if pattern[1] not in self.classes:
-                self.classes.append(pattern[1])
-        self.words = sorted(set(self.words))
-        self.classes = sorted(set(self.classes))
+                    lemmatized = self.lemmatizer.lemmatize(word.lower())
+                    words_temp.append(lemmatized)
+            classes_set.add(pattern[1])
+            
+            # Store lemmatized pattern
+            lemmatized_pattern = [self.lemmatizer.lemmatize(word.lower()) for word in pattern[0] if word not in self.ignore_words]
+            documents_lemma.append((lemmatized_pattern, pattern[1]))
+        
+        self.words = sorted(set(words_temp))
+        self.classes = sorted(classes_set)
+        words_set = set(self.words)
+        
+        # Create training data using set operations
         training = []
         output_empty = [0] * len(self.classes)
-        for doc in self.documents:
-            bag = []
-            word_patterns = doc[0]
-            word_patterns = [self.lemmatizer.lemmatize(word.lower()) for word in word_patterns]
-            for word in self.words:
-                bag.append(1) if word in word_patterns else bag.append(0)
-            output_row = list(output_empty)
+        
+        for doc in documents_lemma:
+            word_set = set(doc[0])
+            bag = [1 if word in word_set else 0 for word in self.words]
+            output_row = output_empty.copy()
             output_row[self.classes.index(doc[1])] = 1
             training.append([bag, output_row])
+        
         random.shuffle(training)
         training = np.array(training, dtype=object)
-        self.train_x = list(training[:, 0])
-        self.train_y = list(training[:, 1])
+        self.train_x = np.array(list(training[:, 0]), dtype=np.float32)
+        self.train_y = np.array(list(training[:, 1]), dtype=np.float32)
 
     def build_model(self):
         self.model = tf.keras.models.Sequential([
             tf.keras.layers.Input(shape=(len(self.train_x[0]),)),
-            tf.keras.layers.Dense(128 , activation='relu'),
-            tf.keras.layers.Dropout(0.5),
             tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dropout(0.5),
+            tf.keras.layers.Dropout(0.3),
+            tf.keras.layers.Dense(32, activation='relu'),
+            tf.keras.layers.Dropout(0.3),
             tf.keras.layers.Dense(len(self.classes), activation='softmax')
         ])
         adam = tf.keras.optimizers.Adam(learning_rate=0.001)
         self.model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
 
     def train_model(self):
-        self.model.fit(np.array(self.train_x), np.array(self.train_y), epochs=100, batch_size=5, verbose=1)
+        self.model.fit(self.train_x, self.train_y, epochs=100, batch_size=32, verbose=1)
         if not os.path.exists(f"./jab/data/{self.username}"):
             os.mkdir(f"./jab/data/{self.username}")
         self.model.save(f'./jab/data/{self.username}/model.keras')
