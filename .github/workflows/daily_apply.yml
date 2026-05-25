@@ -30,6 +30,31 @@ jobs:
         run: |
           python -m playwright install --with-deps
 
+      - name: Ensure NLTK resources
+        run: |
+          python - <<'PY'
+          import nltk
+          for pkg in ['punkt','wordnet']:
+              try:
+                  nltk.data.find(f'tokenizers/{pkg}')
+              except LookupError:
+                  nltk.download(pkg)
+          PY
+
+      - name: Train model if missing
+        env:
+          JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
+        run: |
+          # Train only if the model file is absent for this email
+          MODEL_DIR="jab/data/$JOBAUTO_EMAIL"
+          MODEL_PATH="$MODEL_DIR/model.keras"
+          if [ ! -f "$MODEL_PATH" ]; then
+            echo "Model not found at $MODEL_PATH — training now"
+            python -m jab --email $JOBAUTO_EMAIL --train
+          else
+            echo "Model exists — skipping training"
+          fi
+
       - name: Run Auto-Job-Applier
         env:
           JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
