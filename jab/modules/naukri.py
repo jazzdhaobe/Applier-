@@ -1,8 +1,7 @@
 import time
 import re
 import numpy as np
-import nltk 
-import time
+import nltk
 import json
 from urllib.parse import urlparse, urlunparse
 from playwright.sync_api import sync_playwright , expect
@@ -13,22 +12,25 @@ from nltk.stem import WordNetLemmatizer
 class ChatbotModel():
     def __init__(self, user_data):
         self.lemmatizer = WordNetLemmatizer()
-        self.ignore_words = ['?', '!', '.', ',']
+        self.ignore_words = set(['?', '!', '.', ','])
         self.user_data = user_data
         self.words = []
+        self.words_set = set()
         self.classes = []
         self.load_data()
         self.load_model()
 
     def load_data(self):
+        words_temp = []
+        classes_set = set()
         for intent in self.user_data:
+            classes_set.add(intent['tag'])
             for pattern in intent['patterns']:
                 word_list = nltk.word_tokenize(pattern)
-                self.words.extend(word_list)
-                if intent['tag'] not in self.classes:
-                    self.classes.append(intent['tag'])
-        self.words = sorted(set([self.lemmatizer.lemmatize(w.lower()) for w in self.words if w not in self.ignore_words]))
-        self.classes = sorted(set(self.classes))
+                words_temp.extend(word_list)
+        self.words = sorted(set([self.lemmatizer.lemmatize(w.lower()) for w in words_temp if w not in self.ignore_words]))
+        self.words_set = set(self.words)
+        self.classes = sorted(classes_set)
     
     def load_model(self):
         model_path = f"./jab/data/{user}/model.keras"
@@ -41,13 +43,12 @@ class ChatbotModel():
 
     def bow(self, sentence, show_details=True):
         sentence_words = self.clean_up_sentence(sentence)
-        bag = [0] * len(self.words)
-        for s in sentence_words:
-            for i, w in enumerate(self.words):
-                if w == s:
-                    bag[i] = 1
-                    if show_details:
-                        print("found in bag: %s" % w)
+        sentence_set = set(sentence_words)
+        bag = [1 if w in sentence_set else 0 for w in self.words]
+        if show_details:
+            for w in self.words:
+                if w in sentence_set:
+                    print("found in bag: %s" % w)
         return np.array(bag)
 
     def predict_class(self, sentence):
@@ -94,14 +95,11 @@ class ChatbotAgent:
     
     def match_by_sentiment(self,target, strings):
         target_sentiment = self.sentiment_score(target)
-        sentiment_diffs = []
-        for string in strings:
-            string_sentiment = self.sentiment_score(string)
-            diff = abs(target_sentiment - string_sentiment)
-            sentiment_diffs.append((string, diff))
-        
-        best_match = min(sentiment_diffs, key=lambda x: x[1])
-        return best_match[0], best_match[1]
+        best_match = min(
+            ((s, abs(target_sentiment - self.sentiment_score(s))) for s in strings),
+            key=lambda x: x[1]
+        )
+        return best_match
 
     def classify_new_question(self):
         page=self.page
@@ -135,14 +133,14 @@ class ChatbotAgent:
                 elif radio_buttons or checkboxes:
                     _buttons = radio_buttons or checkboxes
                     options = [el.evaluate('el => el.id') for el in _buttons]
-                    finnas = self.match_by_sentiment(answer,options)[0]
+                    finnas, _ = self.match_by_sentiment(answer,options)
                     label_ = page.locator(f'label[for="{finnas}"]')
                     label_.click(force=True)
                 elif text_input.is_visible():
                     text_input.type(answer,delay=100)
                 elif suggs:
                     options = [el.evaluate('el => el.innerText') for el in suggs]
-                    finnas = self.match_by_sentiment(answer,options)[0]
+                    finnas, _ = self.match_by_sentiment(answer,options)
                     page.click(f'text="{finnas}"')
                 elif dob:
                     dob = answer.strip().split("/")
@@ -164,7 +162,7 @@ class ChatbotAgent:
             return {"response":'error occured on classify_new_question',"error":str(e)}
 
 class NaukriBot:
-    def __init__(self, usreml, usrpas,username,number=10):
+    def __init__(self, usreml, usrpas, username, number=10, headless=False):
         self.browser = None
         self.page = None
         self.usr = [usreml, usrpas]
@@ -172,17 +170,18 @@ class NaukriBot:
         self.applno = number
         self.applied_count = 0
         self.page_no = 1
-        self.tabs = ["profile","apply","preference","similar_jobs"]
+        self.tabs = ["profile", "apply", "preference", "similar_jobs"]
         self.pattern = re.compile(r'https://.*/myapply/saveApply\?strJobsarr=')
+        self.headless = headless
 
     def init_browser(self):
         playwright = sync_playwright().start()
         args = ["--disable-blink-features=AutomationControlled"]
-        self.browser =  playwright.chromium.launch(headless=False,args=args)
+        self.browser = playwright.chromium.launch(headless=self.headless, args=args)
         context = self.browser.new_context()
-        # Deny location permission for Naukri
         context.grant_permissions([], origin="https://www.naukri.com")
         self.page = context.new_page()
+        self.page.set_default_timeout(30000)
         self.cba = ChatbotAgent(self.page, self.username)
 
     def login(self):
@@ -433,6 +432,15 @@ class NaukriBot:
         except Exception as e:
             self.close()
             print(f"applied {self.applied_count} jobs but an error occured :===>{str(e)}")
-        
+
     def close(self):
-        self.browser.close()
+        try:
+            if self.page is not None:
+                self.page.close()
+        except Exception:
+            pass
+        try:
+            if self.browser is not None:
+                self.browser.close()
+        except Exception:
+            pass
