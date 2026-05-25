@@ -35,6 +35,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb
 
+      - name: Prepare browser storage state
+        env:
+          JOBAUTO_STORAGE_STATE: ${{ secrets.JOBAUTO_STORAGE_STATE }}
+        run: |
+          mkdir -p .auth
+          printf '%s' "$JOBAUTO_STORAGE_STATE" > .auth/storage_state.json
+
       - name: Ensure NLTK resources
         run: |
           python - <<'PY'
@@ -67,5 +74,6 @@ jobs:
         env:
           JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
+          JOBAUTO_STORAGE_STATE_PATH: .auth/storage_state.json
         run: |
           xvfb-run -a python -m jab --email $JOBAUTO_EMAIL --apply

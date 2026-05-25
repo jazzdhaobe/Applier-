@@ -1,5 +1,7 @@
+import os
 import time
 import re
+from pathlib import Path
 import numpy as np
 import nltk
 import json
@@ -162,9 +164,21 @@ class ChatbotAgent:
             return {"response":'error occured on classify_new_question',"error":str(e)}
 
 class NaukriBot:
-    def __init__(self, usreml, usrpas, username, number=10, headless=False, otp=None):
+    def __init__(
+        self,
+        usreml,
+        usrpas,
+        username,
+        number=10,
+        headless=False,
+        otp=None,
+        storage_state_path=None,
+        save_storage_state_path=None,
+    ):
         self.browser = None
         self.page = None
+        self.context = None
+        self.playwright = None
         self.usr = [usreml, usrpas]
         self.username = username
         self.applno = number
@@ -174,16 +188,28 @@ class NaukriBot:
         self.pattern = re.compile(r'https://.*/myapply/saveApply\?strJobsarr=')
         self.headless = headless
         self.otp = otp
+        self.storage_state_path = storage_state_path
+        self.save_storage_state_path = save_storage_state_path or storage_state_path
 
     def init_browser(self):
-        playwright = sync_playwright().start()
+        self.playwright = sync_playwright().start()
         args = ["--disable-blink-features=AutomationControlled"]
-        self.browser = playwright.chromium.launch(headless=self.headless, args=args)
-        context = self.browser.new_context()
-        context.grant_permissions([], origin="https://www.naukri.com")
-        self.page = context.new_page()
+        self.browser = self.playwright.chromium.launch(headless=self.headless, args=args)
+        context_kwargs = {}
+        if self.storage_state_path and os.path.exists(self.storage_state_path):
+            context_kwargs["storage_state"] = self.storage_state_path
+        self.context = self.browser.new_context(**context_kwargs)
+        self.context.grant_permissions([], origin="https://www.naukri.com")
+        self.page = self.context.new_page()
         self.page.set_default_timeout(30000)
         self.cba = ChatbotAgent(self.page, self.username)
+
+    def save_storage_state(self):
+        if not self.context or not self.save_storage_state_path:
+            return
+        output_path = Path(self.save_storage_state_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        self.context.storage_state(path=str(output_path))
 
     def dismiss_cookie_banner(self):
         selectors = [
@@ -227,6 +253,7 @@ class NaukriBot:
 
             current_url = self.page.url
             if current_url.startswith("https://www.naukri.com/mnjuser/homepage"):
+                self.save_storage_state()
                 print("[INFO] Login successful! Starting job applications...")
                 return True
 
@@ -248,6 +275,7 @@ class NaukriBot:
                 self.page.locator('button[type="submit"], button.blue-btn').first.click()
                 self.page.wait_for_timeout(5000)
                 if self.page.url.startswith("https://www.naukri.com/mnjuser/homepage"):
+                    self.save_storage_state()
                     print("[INFO] Login successful! Starting job applications...")
                     return True
 
@@ -420,7 +448,7 @@ class NaukriBot:
         try:
             if not self.login():
                 print("Login failed, aborting job application.")
-                self.page.close()
+                self.close()
                 return {"response": "login failed", "applied": 0}
             time.sleep(1)
             self.filter_()
@@ -429,10 +457,7 @@ class NaukriBot:
         except Exception as e:
             print(f"[ERROR] Error during filter_apply: {e}")
         finally:
-            try:
-                self.page.close()
-            except:
-                pass
+            self.close()
         print(f"[FINAL] Job application completed. Applied to {self.applied_count} jobs total.")
         return {"response": "applied successfully", "applied": self.applied_count}
 
@@ -456,9 +481,12 @@ class NaukriBot:
         self.tabIndex = 0
         self.tab = tab
         self.init_browser()
-        if self.login():
-            botactions = self.bot_actions()
-            return botactions
+        try:
+            if self.login():
+                botactions = self.bot_actions()
+                return botactions
+        finally:
+            self.close()
         
     def bot_actions(self):
         try:
@@ -503,12 +531,26 @@ class NaukriBot:
 
     def close(self):
         try:
+            self.save_storage_state()
+        except Exception:
+            pass
+        try:
             if self.page is not None:
                 self.page.close()
         except Exception:
             pass
         try:
+            if self.context is not None:
+                self.context.close()
+        except Exception:
+            pass
+        try:
             if self.browser is not None:
                 self.browser.close()
+        except Exception:
+            pass
+        try:
+            if self.playwright is not None:
+                self.playwright.stop()
         except Exception:
             pass

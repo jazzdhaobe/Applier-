@@ -35,6 +35,13 @@ def resolve_config(args):
             "Missing password. Pass --password or set JOBAUTO_PASSWORD."
         )
 
+    storage_state_path = args.storage_state or get_env("JOBAUTO_STORAGE_STATE_PATH")
+    save_storage_state_path = (
+        args.save_storage_state
+        or get_env("JOBAUTO_STORAGE_STATE_OUTPUT")
+        or storage_state_path
+    )
+
     return {
         "email": args.email,
         "username": args.email,
@@ -50,6 +57,8 @@ def resolve_config(args):
         ),
         "headless": args.headless,
         "otp": args.otp or get_env("JOBAUTO_OTP"),
+        "storage_state_path": storage_state_path,
+        "save_storage_state_path": save_storage_state_path,
     }
 
 
@@ -67,6 +76,14 @@ def main():
     parser.add_argument("--number", help="number of applications to attempt")
     parser.add_argument("--headless", action="store_true", help="run browser in headless mode")
     parser.add_argument("--otp", help="OTP code to use if Naukri requires a second-step verification")
+    parser.add_argument(
+        "--storage-state",
+        help="path to a Playwright storage state JSON file to reuse as a saved session",
+    )
+    parser.add_argument(
+        "--save-storage-state",
+        help="path where the browser storage state should be written after a successful login",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -98,6 +115,8 @@ def main():
         config["number"],
         headless=config["headless"],
         otp=config["otp"],
+        storage_state_path=config["storage_state_path"],
+        save_storage_state_path=config["save_storage_state_path"],
     )
 
     if args.filters:
