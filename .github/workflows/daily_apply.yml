@@ -51,33 +51,14 @@ jobs:
       - name: Validate browser storage state
         run: |
           if [ -f .auth/storage_state.json ]; then
-            python - <<'PY'
-            import json
-            from pathlib import Path
-            path = Path('.auth/storage_state.json')
-            data = json.loads(path.read_text())
-            cookies = len(data.get('cookies', []))
-            origins = len(data.get('origins', []))
-            print(f"[INFO] storage_state present: {path}")
-            print(f"[INFO] cookies={cookies} origins={origins}")
-            PY
+            python -c 'import json; from pathlib import Path; path = Path(".auth/storage_state.json"); data = json.loads(path.read_text()); cookies = len(data.get("cookies", [])); origins = len(data.get("origins", [])); print(f"[INFO] storage_state present: {path}"); print(f"[INFO] cookies={cookies} origins={origins}")'
           else
             echo "[WARN] .auth/storage_state.json is missing"
           fi
 
       - name: Ensure NLTK resources
         run: |
-          python - <<'PY'
-          import nltk
-          for pkg in ['punkt', 'punkt_tab', 'wordnet']:
-              try:
-                  if pkg == 'wordnet':
-                      nltk.data.find('corpora/wordnet')
-                  else:
-                      nltk.data.find(f'tokenizers/{pkg}')
-              except LookupError:
-                  nltk.download(pkg, quiet=True)
-          PY
+          python -m nltk.downloader punkt punkt_tab wordnet
 
       - name: Train model if missing
         env:
