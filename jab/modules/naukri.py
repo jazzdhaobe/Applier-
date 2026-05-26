@@ -215,9 +215,45 @@ class NaukriBot:
         try:
             with path.open("r", encoding="utf-8") as handle:
                 data = json.load(handle)
-            return isinstance(data, dict)
+            if not isinstance(data, dict):
+                raise ValueError("storage state root must be an object")
+            if "cookies" not in data or "origins" not in data:
+                raise ValueError("storage state missing cookies/origins")
+            if not isinstance(data["cookies"], list) or not isinstance(data["origins"], list):
+                raise ValueError("storage state cookies/origins must be lists")
+            return True
         except Exception as exc:
             print(f"[WARN] Ignoring invalid storage state at {path}: {exc}")
+            return False
+
+    def _session_is_authenticated(self):
+        try:
+            current_url = self.page.url
+            if current_url.startswith("https://www.naukri.com/mnjuser/homepage"):
+                return True
+            if self.page.locator('text=/My Naukri|Dashboard|Applications|Profile|Jobs/i').count() > 0:
+                return True
+            return False
+        except Exception:
+            return False
+
+    def _restore_existing_session(self):
+        if not self.has_valid_storage_state():
+            return False
+
+        try:
+            self.page.goto("https://www.naukri.com/mnjuser/homepage", timeout=40000)
+            self.page.wait_for_load_state('domcontentloaded')
+            body_text = self.page.locator('body').inner_text()[:500]
+            if 'Access Denied' in body_text:
+                print("[WARN] Saved session is not usable in this environment; falling back to login.")
+                return False
+            if self._session_is_authenticated():
+                self.save_storage_state()
+                print("[INFO] Reused saved browser session; skipping manual login.")
+                return True
+            return False
+        except Exception:
             return False
 
     def save_storage_state(self):
@@ -246,12 +282,29 @@ class NaukriBot:
 
     def login(self):
         try:
+            if self._restore_existing_session():
+                return True
+
             self.page.goto("https://login.naukri.com/nLogin/Login.php", timeout=40000)
             self.page.wait_for_load_state('domcontentloaded')
-            self.page.wait_for_selector(
-                '#usernameField, input[placeholder="Enter Email ID / Username"], input[placeholder="Enter your active Email ID / Username"]',
-                timeout=15000,
-            )
+            body_text = self.page.locator('body').inner_text()[:500]
+            if 'Access Denied' in body_text:
+                print("[ERROR] Access Denied: Naukri is blocking this browser or environment. No login form available.")
+                self.page.screenshot(path="login_access_denied.png")
+                print("[DEBUG] Screenshot saved as login_access_denied.png.")
+                return False
+
+            try:
+                self.page.wait_for_selector(
+                    '#usernameField, input[placeholder="Enter Email ID / Username"], input[placeholder="Enter your active Email ID / Username"]',
+                    timeout=15000,
+                )
+            except Exception:
+                print("[ERROR] Login form not found: The login page did not load the expected username field. This may be due to bot detection, network issues, or browser incompatibility.")
+                self.page.screenshot(path="login_form_missing.png")
+                print("[DEBUG] Screenshot saved as login_form_missing.png.")
+                return False
+
             self.dismiss_cookie_banner()
 
             username = self.page.locator(

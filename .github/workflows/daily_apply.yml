@@ -42,8 +42,27 @@ jobs:
           mkdir -p .auth
           if [ -n "$JOBAUTO_STORAGE_STATE" ]; then
             printf '%s' "$JOBAUTO_STORAGE_STATE" > .auth/storage_state.json
+            echo "[INFO] Prepared .auth/storage_state.json from JOBAUTO_STORAGE_STATE"
           else
             rm -f .auth/storage_state.json
+            echo "[WARN] JOBAUTO_STORAGE_STATE is not set; running without a saved browser session"
+          fi
+
+      - name: Validate browser storage state
+        run: |
+          if [ -f .auth/storage_state.json ]; then
+            python - <<'PY'
+            import json
+            from pathlib import Path
+            path = Path('.auth/storage_state.json')
+            data = json.loads(path.read_text())
+            cookies = len(data.get('cookies', []))
+            origins = len(data.get('origins', []))
+            print(f"[INFO] storage_state present: {path}")
+            print(f"[INFO] cookies={cookies} origins={origins}")
+            PY
+          else
+            echo "[WARN] .auth/storage_state.json is missing"
           fi
 
       - name: Ensure NLTK resources
