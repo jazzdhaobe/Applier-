@@ -200,6 +200,85 @@ class NaukriBot:
         self.otp = otp
         self.storage_state_path = storage_state_path
         self.save_storage_state_path = save_storage_state_path or storage_state_path
+        self.experience_years = "2"
+
+    def _chatbot_contexts(self):
+        contexts = [self.page]
+        for frame in self.page.frames:
+            if frame != self.page.main_frame:
+                contexts.append(frame)
+        return contexts
+
+    def _answer_chatbot_heuristic(self):
+        """Answer screening questions without the ML model (reliable in CI)."""
+        for _ in range(25):
+            handled = False
+            for ctx in self._chatbot_contexts():
+                container = ctx.locator(".chatbot_MessageContainer")
+                try:
+                    if not container.is_visible(timeout=400):
+                        continue
+                except Exception:
+                    continue
+                handled = True
+                question = ""
+                try:
+                    question = ctx.locator(".botMsg").last.inner_text(timeout=2000)
+                except Exception:
+                    pass
+                exp_keywords = (
+                    "experience", "years", "yrs", "how many years",
+                    "total experience", "work experience",
+                )
+                if any(keyword in question.lower() for keyword in exp_keywords):
+                    answer = str(self.experience_years)
+                else:
+                    answer = "Yes"
+
+                chip = ctx.locator(".chatbot_MessageContainer .chipsContainer .chatbot_Chip")
+                text_input = ctx.locator(".chatbot_MessageContainer .textArea")
+                radios = ctx.locator('.chatbot_MessageContainer input[type="radio"]')
+                checkboxes = ctx.locator('.chatbot_MessageContainer input[type="checkbox"]')
+
+                try:
+                    if chip.count() > 0 and chip.first.is_visible(timeout=500):
+                        chip.first.click()
+                    elif radios.count() > 0:
+                        radios.first.click(force=True)
+                    elif checkboxes.count() > 0:
+                        checkboxes.first.click(force=True)
+                    elif text_input.is_visible(timeout=500):
+                        text_input.fill(answer)
+                    else:
+                        continue
+                except Exception:
+                    continue
+
+                send = ctx.locator(".sendMsg")
+                try:
+                    expect(send).to_be_enabled(timeout=3000)
+                    send.click(timeout=3000)
+                except Exception:
+                    return False
+                self.page.wait_for_timeout(800)
+
+            if not handled:
+                break
+        return True
+
+    def _answer_chatbot_if_visible(self):
+        for ctx in self._chatbot_contexts():
+            try:
+                if ctx.locator(".chatbot_MessageContainer").is_visible(timeout=500):
+                    self._answer_chatbot_heuristic()
+                    try:
+                        self.cba.classify_new_question()
+                    except Exception as exc:
+                        log_info(f"[WARN] ML chatbot fallback skipped: {exc}")
+                    return True
+            except Exception:
+                continue
+        return False
 
     def init_browser(self):
         log_info("[INFO] Launching browser...")
@@ -453,12 +532,24 @@ class NaukriBot:
 
     def _find_apply_button(self):
         """Find the primary Apply button on a job detail page (ignore sidebar/footer)."""
+        try:
+            role_btn = self.page.get_by_role(
+                "button", name=re.compile(r"^apply(\s+now)?$", re.I)
+            ).first
+            if role_btn.is_visible(timeout=2000):
+                text = role_btn.inner_text().lower()
+                if "company site" not in text and text not in ("applied", "already applied"):
+                    return role_btn
+        except Exception:
+            pass
+
         primary_selectors = (
             '#apply-button',
             '[data-test-id="applyBtn"]',
             'button.apply-button-label',
             '.styles_JDC__apply-button button',
             '.jd-header button',
+            'a#apply-button',
         )
         for selector in primary_selectors:
             try:
@@ -525,10 +616,30 @@ class NaukriBot:
             except Exception:
                 continue
 
+    def _submit_apply_click(self, apply_button):
+        """Click Apply and handle network, modals, and chatbot."""
+        try:
+            with self.page.expect_response(
+                lambda response: response.request.method in ("POST", "PUT")
+                and response.status < 500
+                and any(
+                    token in response.url.lower()
+                    for token in ("myapply", "saveapply", "apply-workflow", "/apply")
+                ),
+                timeout=8000,
+            ):
+                apply_button.click(force=True)
+        except Exception:
+            apply_button.click(force=True)
+
+        self.page.wait_for_timeout(1200)
+        self._click_apply_followups()
+        self._answer_chatbot_if_visible()
+        return self._confirm_apply_success(timeout_ms=30000)
+
     def _confirm_apply_success(self, timeout_ms=25000):
         """Wait for chatbot, redirect, or Applied UI after clicking Apply."""
         deadline = time.time() + (timeout_ms / 1000)
-        chatbot_handled = False
 
         while time.time() < deadline:
             if self._shows_applied_state():
@@ -539,19 +650,8 @@ class NaukriBot:
             except Exception:
                 pass
 
-            chatbot = self.page.locator(".chatbot_MessageContainer")
-            try:
-                if chatbot.is_visible(timeout=500):
-                    if not chatbot_handled:
-                        self.cba.classify_new_question()
-                        chatbot_handled = True
-                    else:
-                        self.page.wait_for_timeout(1000)
-                    if self._shows_applied_state():
-                        return True
-                    continue
-            except Exception:
-                pass
+            if self._answer_chatbot_if_visible() and self._shows_applied_state():
+                return True
 
             for selector in (
                 "text=/application sent/i",
@@ -568,6 +668,35 @@ class NaukriBot:
             self.page.wait_for_timeout(800)
 
         return self._shows_applied_state()
+
+    def _apply_from_srp_cards(self):
+        """Try Apply on job cards directly from search results (no detail page)."""
+        cards = self.page.locator(
+            ".srp-jobtuple-wrapper, .cust-job-tuple, .jobTuple, .list-jobtuple"
+        )
+        count = cards.count()
+        log_info(f"[INFO] Trying quick-apply on {count} job cards...")
+        for idx in range(min(count, 25)):
+            if self.applied_count >= self.applno:
+                break
+            card = cards.nth(idx)
+            try:
+                apply_btn = card.locator(
+                    'button:has-text("Apply"), .apply-button, [class*="Apply"]'
+                ).first
+                if not apply_btn.is_visible(timeout=1500):
+                    continue
+                text = apply_btn.inner_text().lower()
+                if "company site" in text or text in ("applied", "already applied"):
+                    continue
+                if self._submit_apply_click(apply_btn):
+                    self.applied_count += 1
+                    log_info(f"✅ Quick-applied card {idx + 1} (total {self.applied_count}/{self.applno}).")
+                else:
+                    log_info(f"[SKIP] Card {idx + 1}: quick apply not confirmed")
+            except Exception as exc:
+                log_info(f"[SKIP] Card {idx + 1}: {exc}")
+                continue
 
     def _collect_job_links(self):
         job_links = self.page.evaluate(
@@ -644,19 +773,18 @@ class NaukriBot:
                         log_info(f"[SKIP] Job {job_index}: no Apply button found")
                     continue
 
-                try:
-                    apply_button.scroll_into_view_if_needed(timeout=3000)
-                except Exception:
-                    pass
-                apply_button.click(force=True)
-                self.page.wait_for_timeout(1200)
-                self._click_apply_followups()
-
-                if self._confirm_apply_success():
+                if self._submit_apply_click(apply_button):
                     self.applied_count += 1
                     log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
                 else:
-                    log_info(f"[SKIP] Job {job_index}: Apply clicked but not confirmed")
+                    try:
+                        self.page.screenshot(path=f"apply_failed_job_{job_index}.png")
+                    except Exception:
+                        pass
+                    log_info(
+                        f"[SKIP] Job {job_index}: Apply not confirmed "
+                        f"(url={self.page.url[:90]}...)"
+                    )
             except Exception as e:
                 log_info(f"[SKIP] Job {job_index}: error ({e})")
                 continue
@@ -688,6 +816,8 @@ class NaukriBot:
     def _apply_search_results_page(self):
         self._apply_bulk_on_current_page()
         if self.applied_count < self.applno:
+            self._apply_from_srp_cards()
+        if self.applied_count < self.applno:
             self._apply_jobs_on_current_page()
 
     def _goto_next_results_page(self):
@@ -705,6 +835,7 @@ class NaukriBot:
             log_info("Search keyword required")
             return {"response": "search required", "applied": 0}
         self.experience = e
+        self.experience_years = str(e) if e not in (None, "") else "2"
         self.location = l
         self.jobage = ja
         log_info(f"[INFO] Starting apply run (target {self.applno} jobs)...")

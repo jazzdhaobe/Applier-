@@ -14,7 +14,9 @@ jobs:
       JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
       JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
       JOBAUTO_NUMBER: "50"
+      JOBAUTO_EXPERIENCE: "2"
       PYTHONUNBUFFERED: "1"
+      TF_CPP_MIN_LOG_LEVEL: "2"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -116,4 +118,5 @@ jobs:
             login_exception.png
             login_access_denied.png
             login_form_missing.png
+            apply_failed_*.png
           if-no-files-found: ignore
