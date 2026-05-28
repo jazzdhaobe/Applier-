@@ -441,6 +441,94 @@ class NaukriBot:
         except Exception:
             return {"status": "failed"}
 
+    def _find_apply_button(self):
+        """Find a visible Naukri Apply button (not company-site-only)."""
+        preferred_texts = ("apply", "apply now", "quick apply", "easy apply")
+        candidates = []
+
+        for selector in (
+            '#apply-button',
+            '[data-test-id="applyBtn"]',
+            'button.apply-button-label',
+            '.apply-button',
+            'button',
+            'a',
+        ):
+            try:
+                for elem in self.page.locator(selector).all():
+                    try:
+                        if not elem.is_visible(timeout=500):
+                            continue
+                        text = " ".join(elem.inner_text().split())
+                        lower = text.lower()
+                        if not lower or "apply" not in lower:
+                            continue
+                        if "company site" in lower or "on company" in lower:
+                            continue
+                        if "applied" in lower and lower not in preferred_texts:
+                            continue
+                        candidates.append((elem, text, lower))
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+
+        if not candidates:
+            return None
+
+        def score(item):
+            _, text, lower = item
+            if lower in preferred_texts:
+                return 0
+            if lower == "apply":
+                return 1
+            if lower.startswith("apply"):
+                return 2
+            return 3
+
+        candidates.sort(key=score)
+        return candidates[0][0]
+
+    def _job_already_applied(self):
+        markers = (
+            "text=/already applied/i",
+            "text=/you have applied/i",
+            "text=/application submitted/i",
+        )
+        for selector in markers:
+            try:
+                if self.page.locator(selector).first.is_visible(timeout=1500):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _confirm_apply_success(self):
+        chatbot = self.page.locator(".chatbot_MessageContainer")
+        try:
+            expect(chatbot).to_be_visible(timeout=8000)
+            self.cba.classify_new_question()
+            return True
+        except Exception:
+            pass
+        try:
+            expect(self.page).to_have_url(self.pattern, timeout=8000)
+            return True
+        except Exception:
+            pass
+        success_markers = (
+            "text=/application sent/i",
+            "text=/successfully applied/i",
+            "text=/applied successfully/i",
+        )
+        for selector in success_markers:
+            try:
+                if self.page.locator(selector).first.is_visible(timeout=2000):
+                    return True
+            except Exception:
+                continue
+        return False
+
     def apply_(self):
         try:
             self.page.wait_for_load_state('load', timeout=10000)
@@ -466,81 +554,44 @@ class NaukriBot:
                 except:
                     pass
                 self.page.wait_for_timeout(1500)
-                
-                # Check if this job has "Apply on company site" button - skip these
-                company_site_buttons = self.page.locator('button:has-text("Apply on company site")').all()
-                if company_site_buttons and len(company_site_buttons) > 0:
+
+                if self._job_already_applied():
+                    log_info(f"[SKIP] Job {job_index}: already applied")
                     continue
-                
-                # Try multiple selectors specifically for the "Apply" button (not "Apply on company site")
-                apply_button = None
-                selectors = [
-                    'button:has-text("Apply"):not(:has-text("company"))',
-                    'button:has-text("Apply")',
-                    '#apply-button',
-                    '.apply-button',
-                    '[data-test-id="applyBtn"]',
-                    'button.apply-button-label',
-                ]
-                
-                for selector in selectors:
-                    try:
-                        if apply_button is None:
-                            try:
-                                elems = self.page.locator(selector).all()
-                                for elem in elems:
-                                    try:
-                                        button_text = elem.inner_text()
-                                        # Check if it's exactly "Apply" and not "Apply on company site"
-                                        if button_text.strip() == "Apply" and "company site" not in button_text.lower():
-                                            if elem.is_visible(timeout=2000):
-                                                apply_button = elem
-                                                break
-                                    except:
-                                        pass
-                                if apply_button:
-                                    break
-                            except:
-                                pass
-                    except:
-                        pass
-                
+
+                apply_button = self._find_apply_button()
                 if not apply_button:
-                    # Try scrolling and looking again
                     try:
                         self.page.evaluate('window.scrollBy(0, 500)')
                         self.page.wait_for_timeout(500)
-                        for selector in selectors:
-                            try:
-                                elem = self.page.locator(selector).first
-                                if elem.is_visible(timeout=2000):
-                                    apply_button = elem
-                                    break
-                            except:
-                                pass
-                    except:
+                    except Exception:
                         pass
-                
+                    apply_button = self._find_apply_button()
+
                 if not apply_button:
-                    continue
-                
-                apply_button.click()
-                self.page.wait_for_timeout(1000)
-                
-                try:
-                    expect(self.page.locator(".chatbot_MessageContainer")).to_be_visible(timeout=3000)
-                    self.cba.classify_new_question()
-                    self.applied_count+=1
-                    log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
-                except:
+                    company_only = False
                     try:
-                        expect(self.page).to_have_url(self.pattern)
-                        self.applied_count+=1
-                        log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
-                    except:
-                        continue
+                        loc = self.page.locator('button:has-text("Apply on company site")')
+                        company_only = loc.first.is_visible(timeout=1000) and self._find_apply_button() is None
+                    except Exception:
+                        pass
+                    if company_only:
+                        log_info(f"[SKIP] Job {job_index}: company-site apply only")
+                    else:
+                        log_info(f"[SKIP] Job {job_index}: no Apply button found")
+                    continue
+
+                apply_button.click()
+                self.page.wait_for_timeout(1500)
+
+                if self._confirm_apply_success():
+                    self.applied_count += 1
+                    log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
+                else:
+                    log_info(f"[SKIP] Job {job_index}: Apply clicked but not confirmed")
             except Exception as e:
-                continue 
+                log_info(f"[SKIP] Job {job_index}: error ({e})")
+                continue
         if self.applied_count<self.applno:
             self.page_no+=1
             parsed = urlparse(self.base_page_url)
