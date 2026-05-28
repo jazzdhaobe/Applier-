@@ -406,8 +406,18 @@ class NaukriBot:
 
     def checkbox_apply(self):
         try:
-            checkboxes = self.page.locator('.naukicon-ot-checkbox').element_handles()
-            print(f"Found {len(checkboxes)} checkboxes.")
+            checkboxes = []
+            for selector in (
+                '.naukicon-ot-checkbox',
+                '.srp-jobtuple-wrapper input[type="checkbox"]',
+                '.jobTuple input[type="checkbox"]',
+                '.list-jobtuple input[type="checkbox"]',
+            ):
+                found = self.page.locator(selector).element_handles()
+                if found:
+                    checkboxes = found
+                    break
+            log_info(f"[INFO] Found {len(checkboxes)} bulk-apply checkboxes on page.")
             if not len(checkboxes) == 0:
                 lcbxs = 0
                 for checkbox in checkboxes[:5]:
@@ -529,17 +539,40 @@ class NaukriBot:
                 continue
         return False
 
-    def apply_(self):
+    def _collect_job_links(self):
+        job_links = self.page.evaluate(
+            """() => {
+                const selectors = [
+                    '.srp-jobtuple-wrapper a.title',
+                    '.jobTuple a.title',
+                    'article a.title',
+                    'a.title',
+                ];
+                const links = new Set();
+                for (const selector of selectors) {
+                    for (const anchor of document.querySelectorAll(selector)) {
+                        const href = anchor.href || anchor.getAttribute('href');
+                        if (href && href.includes('naukri.com') && !href.includes('jobAge=')) {
+                            links.add(href);
+                        }
+                    }
+                }
+                return Array.from(links);
+            }"""
+        )
+        return job_links or []
+
+    def _apply_jobs_on_current_page(self):
         try:
             self.page.wait_for_load_state('load', timeout=10000)
-        except Exception as e:
+        except Exception:
             pass
-        self.page.wait_for_timeout(2000)  # Wait for JS to render jobs
-        job_links = self.page.eval_on_selector_all(
-            '.title',
-            'elements => elements.map(element => element.getAttribute("href")) .filter(href => href !==null)'
+        self.page.wait_for_timeout(2000)
+        job_links = self._collect_job_links()
+        log_info(
+            f"[INFO] Page {self.page_no}: {len(job_links)} job detail links "
+            f"(applied {self.applied_count}/{self.applno})"
         )
-        log_info(f"[INFO] Page {self.page_no}: found {len(job_links)} job links (applied {self.applied_count}/{self.applno})")
         for job_index, jl in enumerate(job_links, start=1):
             if self.applied_count >= self.applno:
                 log_info(f"\n✅ Successfully applied to {self.applied_count} jobs!")
@@ -592,17 +625,44 @@ class NaukriBot:
             except Exception as e:
                 log_info(f"[SKIP] Job {job_index}: error ({e})")
                 continue
-        if self.applied_count<self.applno:
-            self.page_no+=1
-            parsed = urlparse(self.base_page_url)
-            new_path = parsed.path + f"-{self.page_no}"
-            modified_url = urlunparse(parsed._replace(path=new_path))
-            try:
-                self.page.goto(modified_url)
-            except:
-                print(f"\n✅ Successfully applied to {self.applied_count} jobs!")
+
+    def _apply_bulk_on_current_page(self):
+        """Use multi-select checkboxes on the search-results page when available."""
+        rounds = 0
+        while self.applied_count < self.applno and rounds < 12:
+            rounds += 1
+            cbapl = self.checkbox_apply()
+            if cbapl["status"] == "quota_exceeded":
+                log_info("[INFO] Daily quota exceeded during bulk apply.")
                 return
-            self.apply_()
+            if cbapl["status"] == "underway":
+                self.cba.classify_new_question()
+                try:
+                    expect(self.page).to_have_url(self.pattern, timeout=12000)
+                    self.applied_count += cbapl["clicked"]
+                    log_info(f"✅ Bulk applied {cbapl['clicked']} jobs (total {self.applied_count}/{self.applno}).")
+                except Exception as exc:
+                    log_info(f"[SKIP] Bulk apply chatbot not completed: {exc}")
+                continue
+            if cbapl["status"] == "done":
+                self.applied_count += cbapl["clicked"]
+                log_info(f"✅ Bulk applied {cbapl['clicked']} jobs (total {self.applied_count}/{self.applno}).")
+                continue
+            break
+
+    def _apply_search_results_page(self):
+        self._apply_bulk_on_current_page()
+        if self.applied_count < self.applno:
+            self._apply_jobs_on_current_page()
+
+    def _goto_next_results_page(self):
+        self.page_no += 1
+        parsed = urlparse(self.base_page_url)
+        new_path = parsed.path + f"-{self.page_no}"
+        modified_url = urlunparse(parsed._replace(path=new_path))
+        self.page.goto(modified_url, timeout=40000)
+        self.page.wait_for_load_state('domcontentloaded')
+        self.page.wait_for_timeout(2000)
 
     def filter_apply(self, s, e='', l='', ja='3'):
         self.search = s
@@ -622,8 +682,32 @@ class NaukriBot:
             log_info("[INFO] Applying search filters...")
             self.filter_()
             self.base_page_url = self.page.url
+            self.page_no = 1
+            zero_progress_pages = 0
             log_info(f"[INFO] Search results ready: {self.base_page_url}")
-            self.apply_()
+
+            while self.applied_count < self.applno and self.page_no <= 25:
+                before = self.applied_count
+                log_info(f"[INFO] === Results page {self.page_no} ===")
+                self._apply_search_results_page()
+                if self.applied_count > before:
+                    zero_progress_pages = 0
+                else:
+                    zero_progress_pages += 1
+                    log_info(
+                        f"[WARN] No applications on page {self.page_no} "
+                        f"({zero_progress_pages}/3 empty pages)"
+                    )
+                    if zero_progress_pages >= 3:
+                        log_info("[ERROR] Stopping after 3 pages with zero applications.")
+                        break
+                if self.applied_count >= self.applno:
+                    break
+                try:
+                    self._goto_next_results_page()
+                except Exception as exc:
+                    log_info(f"[INFO] No more result pages: {exc}")
+                    break
         except Exception as e:
             log_info(f"[ERROR] Error during filter_apply: {e}")
         finally:
