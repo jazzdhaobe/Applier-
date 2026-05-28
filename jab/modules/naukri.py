@@ -11,6 +11,16 @@ import tensorflow as tf
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from nltk.stem import WordNetLemmatizer
 
+CHROMIUM_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+)
+
+
+def log_info(message: str) -> None:
+    print(message, flush=True)
+
+
 class ChatbotModel():
     def __init__(self, user_data):
         self.lemmatizer = WordNetLemmatizer()
@@ -192,12 +202,20 @@ class NaukriBot:
         self.save_storage_state_path = save_storage_state_path or storage_state_path
 
     def init_browser(self):
+        log_info("[INFO] Launching browser...")
         self.playwright = sync_playwright().start()
         args = ["--disable-blink-features=AutomationControlled"]
         self.browser = self.playwright.chromium.launch(headless=self.headless, args=args)
-        context_kwargs = {}
+        context_kwargs = {
+            "user_agent": CHROMIUM_USER_AGENT,
+            "viewport": {"width": 1366, "height": 768},
+            "locale": "en-IN",
+        }
         if self.has_valid_storage_state():
             context_kwargs["storage_state"] = self.storage_state_path
+            log_info(f"[INFO] Loaded saved session from {self.storage_state_path}")
+        else:
+            log_info("[WARN] No saved session file; password login may require OTP in CI.")
         self.context = self.browser.new_context(**context_kwargs)
         self.context.grant_permissions([], origin="https://www.naukri.com")
         self.page = self.context.new_page()
@@ -223,7 +241,7 @@ class NaukriBot:
                 raise ValueError("storage state cookies/origins must be lists")
             return True
         except Exception as exc:
-            print(f"[WARN] Ignoring invalid storage state at {path}: {exc}")
+            log_info(f"[WARN] Ignoring invalid storage state at {path}: {exc}")
             return False
 
     def _session_is_authenticated(self):
@@ -246,12 +264,13 @@ class NaukriBot:
             self.page.wait_for_load_state('domcontentloaded')
             body_text = self.page.locator('body').inner_text()[:500]
             if 'Access Denied' in body_text:
-                print("[WARN] Saved session is not usable in this environment; falling back to login.")
+                log_info("[WARN] Saved session is not usable in this environment; falling back to login.")
                 return False
             if self._session_is_authenticated():
                 self.save_storage_state()
-                print("[INFO] Reused saved browser session; skipping manual login.")
+                log_info("[INFO] Reused saved browser session; skipping manual login.")
                 return True
+            log_info("[WARN] Saved session cookies did not authenticate; falling back to login.")
             return False
         except Exception:
             return False
@@ -280,11 +299,32 @@ class NaukriBot:
                 continue
         return False
 
+    def _otp_required(self):
+        selectors = [
+            'input[autocomplete="one-time-code"]',
+            'input[placeholder*="OTP" i]',
+            'input[type="tel"]',
+            'text=/one.?time password|enter otp|verify otp/i',
+        ]
+        for selector in selectors:
+            try:
+                locator = self.page.locator(selector).first
+                if locator.is_visible(timeout=1500):
+                    return True
+            except Exception:
+                continue
+        try:
+            body_text = self.page.locator("body").inner_text(timeout=2000).lower()
+        except Exception:
+            return False
+        return any(token in body_text for token in ("otp", "one-time password", "verify mobile"))
+
     def login(self):
         try:
             if self._restore_existing_session():
                 return True
 
+            log_info("[INFO] Starting password login...")
             self.page.goto("https://login.naukri.com/nLogin/Login.php", timeout=40000)
             self.page.wait_for_load_state('domcontentloaded')
             body_text = self.page.locator('body').inner_text()[:500]
@@ -323,39 +363,45 @@ class NaukriBot:
             current_url = self.page.url
             if current_url.startswith("https://www.naukri.com/mnjuser/homepage"):
                 self.save_storage_state()
-                print("[INFO] Login successful! Starting job applications...")
+                log_info("[INFO] Login successful! Starting job applications...")
                 return True
 
             invalid_details = self.page.locator('text=Invalid details. Please check the Email ID - Password combination.').is_visible(timeout=3000)
             if invalid_details:
-                print("Login failed: invalid email/password combination.")
+                log_info("Login failed: invalid email/password combination.")
                 self.page.screenshot(path="login_failed.png")
-                print("[DEBUG] Screenshot saved as login_failed.png.")
+                log_info("[DEBUG] Screenshot saved as login_failed.png.")
                 return False
 
-            otp_input = self.page.locator('input[autocomplete="one-time-code"], input[placeholder*="OTP" i], input[type="tel"]').first
-            if otp_input.is_visible(timeout=3000):
+            if self._otp_required():
                 if not self.otp:
-                    print("Login requires OTP. Pass --otp or set JOBAUTO_OTP to continue.")
+                    log_info(
+                        "[ERROR] Login requires OTP. For GitHub Actions, set the "
+                        "JOBAUTO_STORAGE_STATE secret with a fresh session export "
+                        "(see scripts/export_storage_state.py). Scheduled runs cannot wait for OTP."
+                    )
                     self.page.screenshot(path="login_failed.png")
-                    print("[DEBUG] Screenshot saved as login_failed.png.")
+                    log_info("[DEBUG] Screenshot saved as login_failed.png.")
                     return False
+                otp_input = self.page.locator(
+                    'input[autocomplete="one-time-code"], input[placeholder*="OTP" i], input[type="tel"]'
+                ).first
                 otp_input.fill(self.otp)
                 self.page.locator('button[type="submit"], button.blue-btn').first.click()
                 self.page.wait_for_timeout(5000)
                 if self.page.url.startswith("https://www.naukri.com/mnjuser/homepage"):
                     self.save_storage_state()
-                    print("[INFO] Login successful! Starting job applications...")
+                    log_info("[INFO] Login successful! Starting job applications...")
                     return True
 
-            print(f"Login failed. Current URL: {current_url}")
+            log_info(f"Login failed. Current URL: {current_url}")
             self.page.screenshot(path="login_failed.png")
             print("[DEBUG] Screenshot saved as login_failed.png.")
             return False
         except Exception as e:
-            print(f"Error during login: {e}")
+            log_info(f"Error during login: {e}")
             self.page.screenshot(path="login_exception.png")
-            print(f"[DEBUG] Screenshot saved as login_exception.png.")
+            log_info("[DEBUG] Screenshot saved as login_exception.png.")
             return False
 
     def checkbox_apply(self):
@@ -405,11 +451,13 @@ class NaukriBot:
             '.title',
             'elements => elements.map(element => element.getAttribute("href")) .filter(href => href !==null)'
         )
-        print(f"[INFO] Found {len(job_links)} job links, applying now...")
+        log_info(f"[INFO] Page {self.page_no}: found {len(job_links)} job links (applied {self.applied_count}/{self.applno})")
         for job_index, jl in enumerate(job_links, start=1):
             if self.applied_count >= self.applno:
-                print(f"\n✅ Successfully applied to {self.applied_count} jobs!")
+                log_info(f"\n✅ Successfully applied to {self.applied_count} jobs!")
                 break
+            if job_index == 1 or job_index % 5 == 0:
+                log_info(f"[INFO] Processing job {job_index}/{len(job_links)} on page {self.page_no}...")
             try:
                 self.page.wait_for_timeout(1000)
                 self.page.goto(jl, timeout=30000)
@@ -483,12 +531,12 @@ class NaukriBot:
                     expect(self.page.locator(".chatbot_MessageContainer")).to_be_visible(timeout=3000)
                     self.cba.classify_new_question()
                     self.applied_count+=1
-                    print(f"✅ Applied to {self.applied_count} jobs.")
+                    log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
                 except:
                     try:
                         expect(self.page).to_have_url(self.pattern)
                         self.applied_count+=1
-                        print(f"✅ Applied to {self.applied_count} jobs.")
+                        log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
                     except:
                         continue
             except Exception as e:
@@ -508,26 +556,28 @@ class NaukriBot:
     def filter_apply(self, s, e='', l='', ja='3'):
         self.search = s
         if not self.search:
-            print("Search keyword required")
-            return
+            log_info("Search keyword required")
+            return {"response": "search required", "applied": 0}
         self.experience = e
         self.location = l
         self.jobage = ja
+        log_info(f"[INFO] Starting apply run (target {self.applno} jobs)...")
         self.init_browser()
         try:
             if not self.login():
-                print("Login failed, aborting job application.")
-                self.close()
+                log_info("Login failed, aborting job application.")
                 return {"response": "login failed", "applied": 0}
             time.sleep(1)
+            log_info("[INFO] Applying search filters...")
             self.filter_()
             self.base_page_url = self.page.url
+            log_info(f"[INFO] Search results ready: {self.base_page_url}")
             self.apply_()
         except Exception as e:
-            print(f"[ERROR] Error during filter_apply: {e}")
+            log_info(f"[ERROR] Error during filter_apply: {e}")
         finally:
             self.close()
-        print(f"[FINAL] Job application completed. Applied to {self.applied_count} jobs total.")
+        log_info(f"[FINAL] Job application completed. Applied to {self.applied_count} jobs total.")
         return {"response": "applied successfully", "applied": self.applied_count}
 
     def filter_(self):

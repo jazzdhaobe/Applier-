@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 from .modules.model import ChatbotBuild
 from .modules.naukri import NaukriBot
 
@@ -89,6 +90,11 @@ def main():
         action="store_true",
         help="print the resolved settings without launching the browser",
     )
+    parser.add_argument(
+        "--verify-login",
+        action="store_true",
+        help="only verify that login/session works, then exit",
+    )
     args = parser.parse_args()
 
     if args.train:
@@ -119,10 +125,30 @@ def main():
         save_storage_state_path=config["save_storage_state_path"],
     )
 
+    if args.verify_login:
+        nb.init_browser()
+        try:
+            if not nb.login():
+                print("Login verification failed.", file=sys.stderr)
+                raise SystemExit(1)
+            print("Login verification succeeded.")
+            raise SystemExit(0)
+        finally:
+            nb.close()
+
     if args.filters:
-        nb.filter_apply(config["search"], config["experience"], config["location"], config["job_age"])
+        result = nb.filter_apply(
+            config["search"],
+            config["experience"],
+            config["location"],
+            config["job_age"],
+        )
+        if (result or {}).get("response") == "login failed":
+            raise SystemExit(1)
     else:
-        nb.start_apply("apply")
+        result = nb.start_apply("apply")
+        if result is None:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

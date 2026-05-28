@@ -9,9 +9,12 @@ on:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
       JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
+      JOBAUTO_NUMBER: "50"
+      PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,16 +50,27 @@ jobs:
             echo "[INFO] Prepared .auth/storage_state.json from JOBAUTO_STORAGE_STATE"
           else
             rm -f .auth/storage_state.json
-            echo "[WARN] JOBAUTO_STORAGE_STATE is not set; running without a saved browser session"
+            echo "::error::JOBAUTO_STORAGE_STATE secret is missing. Export .auth/storage_state.json locally and add it as a repository secret (see scripts/export_storage_state.py)."
+            exit 1
           fi
 
       - name: Validate browser storage state
         run: |
-          if [ -f .auth/storage_state.json ]; then
-            python -c 'import json; from pathlib import Path; path = Path(".auth/storage_state.json"); data = json.loads(path.read_text()); cookies = len(data.get("cookies", [])); origins = len(data.get("origins", [])); print(f"[INFO] storage_state present: {path}"); print(f"[INFO] cookies={cookies} origins={origins}")'
-          else
-            echo "[WARN] .auth/storage_state.json is missing"
-          fi
+          python -c '
+          import json
+          import sys
+          from pathlib import Path
+          path = Path(".auth/storage_state.json")
+          data = json.loads(path.read_text())
+          cookies = data.get("cookies", [])
+          origins = data.get("origins", [])
+          naukri = [c for c in cookies if "naukri" in c.get("domain", "")]
+          print(f"[INFO] storage_state present: {path}")
+          print(f"[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}")
+          if len(naukri) < 3:
+              print("::error::Storage state has too few Naukri cookies; re-export session locally.")
+              sys.exit(1)
+          '
 
       - name: Ensure NLTK resources
         run: |
@@ -76,10 +90,30 @@ jobs:
             echo "Model exists — skipping training"
           fi
 
+      - name: Verify Naukri login (session reuse)
+        env:
+          JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
+          JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
+          JOBAUTO_STORAGE_STATE_PATH: .auth/storage_state.json
+        run: |
+          xvfb-run -a python -u -m jab --email $JOBAUTO_EMAIL --verify-login
+
       - name: Run Auto-Job-Applier
         env:
           JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
           JOBAUTO_STORAGE_STATE_PATH: .auth/storage_state.json
         run: |
-          xvfb-run -a python -m jab --email $JOBAUTO_EMAIL --apply --filters
+          xvfb-run -a python -u -m jab --email $JOBAUTO_EMAIL --apply --filters
+
+      - name: Upload debug screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naukri-debug-screenshots
+          path: |
+            login_failed.png
+            login_exception.png
+            login_access_denied.png
+            login_form_missing.png
+          if-no-files-found: ignore

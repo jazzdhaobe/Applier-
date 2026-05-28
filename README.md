@@ -45,10 +45,22 @@ The repository includes:
 
 You can run the applier from GitHub Actions so it runs every day even if your laptop is closed.
 
-- Add two repository secrets: `JOBAUTO_EMAIL` and `JOBAUTO_PASSWORD` (Repository → Settings → Secrets).
-- The workflow is at `.github/workflows/daily_apply.yml` and runs daily at 09:00 IST by default. It can also be triggered manually via the Actions tab.
+- Add repository secrets (Settings → Secrets → Actions):
+  - `JOBAUTO_EMAIL` — your Naukri email
+  - `JOBAUTO_PASSWORD` — your Naukri password
+  - `JOBAUTO_STORAGE_STATE` — full JSON from `.auth/storage_state.json` (required so CI can reuse your session and skip OTP)
+- The workflow is at `.github/workflows/daily_apply.yml` and runs daily at 09:00 IST (50 applications with `--filters`). It can also be triggered manually via the Actions tab.
 
-Note: Playwright runs headless on the Actions runner; ensure your model and training data are available in the repository or recreated during the run.
+**Export / refresh session for CI** (run locally after logging in once if OTP appears):
+
+```powershell
+python scripts/export_storage_state.py --email your-email@gmail.com --password your-password
+python scripts/set_github_storage_secret.py
+```
+
+Or paste the contents of `.auth/storage_state.json` into the `JOBAUTO_STORAGE_STATE` secret manually.
+
+Note: Naukri often asks for OTP on password login from cloud IPs. Your home PC may not ask OTP, but GitHub Actions will unless `JOBAUTO_STORAGE_STATE` is set. Re-export the session every few weeks if CI login starts failing.
 
 The task uses a secure credential file in `%APPDATA%\jobautobot\credentials.xml` and a persistent email/search configuration in Windows environment variables.
 
