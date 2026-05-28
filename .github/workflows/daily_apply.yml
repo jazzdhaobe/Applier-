@@ -15,6 +15,7 @@ jobs:
       JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
       JOBAUTO_NUMBER: "50"
       JOBAUTO_EXPERIENCE: "2"
+      JOBAUTO_CI: "1"
       PYTHONUNBUFFERED: "1"
       TF_CPP_MIN_LOG_LEVEL: "2"
     steps:
@@ -101,12 +102,14 @@ jobs:
           xvfb-run -a python -u -m jab --email $JOBAUTO_EMAIL --verify-login
 
       - name: Run Auto-Job-Applier
+        # Same as local: python -m jab --email YOU --apply --filters --password PASS
+        # Password and session come from secrets; xvfb provides a display on Linux.
         env:
           JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
           JOBAUTO_STORAGE_STATE_PATH: .auth/storage_state.json
         run: |
-          xvfb-run -a python -u -m jab --email $JOBAUTO_EMAIL --apply --filters
+          xvfb-run -a python -u -m jab --email "$JOBAUTO_EMAIL" --apply --filters
 
       - name: Upload debug screenshots on failure
         if: failure()

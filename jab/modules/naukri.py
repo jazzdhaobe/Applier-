@@ -530,42 +530,6 @@ class NaukriBot:
         except Exception:
             return {"status": "failed"}
 
-    def _find_apply_button(self):
-        """Find the primary Apply button on a job detail page (ignore sidebar/footer)."""
-        try:
-            role_btn = self.page.get_by_role(
-                "button", name=re.compile(r"^apply(\s+now)?$", re.I)
-            ).first
-            if role_btn.is_visible(timeout=2000):
-                text = role_btn.inner_text().lower()
-                if "company site" not in text and text not in ("applied", "already applied"):
-                    return role_btn
-        except Exception:
-            pass
-
-        primary_selectors = (
-            '#apply-button',
-            '[data-test-id="applyBtn"]',
-            'button.apply-button-label',
-            '.styles_JDC__apply-button button',
-            '.jd-header button',
-            'a#apply-button',
-        )
-        for selector in primary_selectors:
-            try:
-                elem = self.page.locator(selector).first
-                if not elem.is_visible(timeout=2000):
-                    continue
-                text = " ".join(elem.inner_text().split()).lower()
-                if not text or "apply" not in text:
-                    continue
-                if "company site" in text or text in ("applied", "already applied"):
-                    continue
-                return elem
-            except Exception:
-                continue
-        return None
-
     def _job_already_applied(self):
         markers = (
             "text=/already applied/i",
@@ -582,154 +546,20 @@ class NaukriBot:
                 continue
         return False
 
-    def _shows_applied_state(self):
-        if self._job_already_applied():
-            return True
-        try:
-            apply_btn = self.page.locator("#apply-button, button.apply-button-label").first
-            if apply_btn.is_visible(timeout=1000):
-                label = apply_btn.inner_text().strip().lower()
-                if "applied" in label and "apply" not in label.replace("applied", ""):
-                    return True
-        except Exception:
-            pass
-        return False
-
-    def _click_apply_followups(self):
-        """Handle confirmation modals that appear after the first Apply click."""
-        followups = (
-            "Apply without",
-            "Apply anyway",
-            "Yes",
-            "Confirm",
-            "Submit",
-            "Continue",
-        )
-        for label in followups:
-            try:
-                btn = self.page.get_by_role(
-                    "button", name=re.compile(re.escape(label), re.I)
-                ).first
-                if btn.is_visible(timeout=1200):
-                    btn.click()
-                    self.page.wait_for_timeout(1200)
-            except Exception:
-                continue
-
-    def _submit_apply_click(self, apply_button):
-        """Click Apply and handle network, modals, and chatbot."""
-        try:
-            with self.page.expect_response(
-                lambda response: response.request.method in ("POST", "PUT")
-                and response.status < 500
-                and any(
-                    token in response.url.lower()
-                    for token in ("myapply", "saveapply", "apply-workflow", "/apply")
-                ),
-                timeout=8000,
-            ):
-                apply_button.click(force=True)
-        except Exception:
-            apply_button.click(force=True)
-
-        self.page.wait_for_timeout(1200)
-        self._click_apply_followups()
-        self._answer_chatbot_if_visible()
-        return self._confirm_apply_success(timeout_ms=30000)
-
-    def _confirm_apply_success(self, timeout_ms=25000):
-        """Wait for chatbot, redirect, or Applied UI after clicking Apply."""
-        deadline = time.time() + (timeout_ms / 1000)
-
-        while time.time() < deadline:
-            if self._shows_applied_state():
-                return True
-            try:
-                if self.pattern.search(self.page.url):
-                    return True
-            except Exception:
-                pass
-
-            if self._answer_chatbot_if_visible() and self._shows_applied_state():
-                return True
-
-            for selector in (
-                "text=/application sent/i",
-                "text=/successfully applied/i",
-                "text=/applied successfully/i",
-                "text=/we have received your application/i",
-            ):
-                try:
-                    if self.page.locator(selector).first.is_visible(timeout=400):
-                        return True
-                except Exception:
-                    continue
-
-            self.page.wait_for_timeout(800)
-
-        return self._shows_applied_state()
-
-    def _apply_from_srp_cards(self):
-        """Try Apply on job cards directly from search results (no detail page)."""
-        cards = self.page.locator(
-            ".srp-jobtuple-wrapper, .cust-job-tuple, .jobTuple, .list-jobtuple"
-        )
-        count = cards.count()
-        log_info(f"[INFO] Trying quick-apply on {count} job cards...")
-        for idx in range(min(count, 25)):
-            if self.applied_count >= self.applno:
-                break
-            card = cards.nth(idx)
-            try:
-                apply_btn = card.locator(
-                    'button:has-text("Apply"), .apply-button, [class*="Apply"]'
-                ).first
-                if not apply_btn.is_visible(timeout=1500):
-                    continue
-                text = apply_btn.inner_text().lower()
-                if "company site" in text or text in ("applied", "already applied"):
-                    continue
-                if self._submit_apply_click(apply_btn):
-                    self.applied_count += 1
-                    log_info(f"✅ Quick-applied card {idx + 1} (total {self.applied_count}/{self.applno}).")
-                else:
-                    log_info(f"[SKIP] Card {idx + 1}: quick apply not confirmed")
-            except Exception as exc:
-                log_info(f"[SKIP] Card {idx + 1}: {exc}")
-                continue
-
-    def _collect_job_links(self):
-        job_links = self.page.evaluate(
-            """() => {
-                const selectors = [
-                    '.srp-jobtuple-wrapper a.title',
-                    '.jobTuple a.title',
-                    'article a.title',
-                    'a.title',
-                ];
-                const links = new Set();
-                for (const selector of selectors) {
-                    for (const anchor of document.querySelectorAll(selector)) {
-                        const href = anchor.href || anchor.getAttribute('href');
-                        if (href && href.includes('naukri.com') && !href.includes('jobAge=')) {
-                            links.add(href);
-                        }
-                    }
-                }
-                return Array.from(links);
-            }"""
-        )
-        return job_links or []
-
-    def _apply_jobs_on_current_page(self):
+    def apply_(self):
+        """Same per-job apply loop used when running locally with --apply --filters."""
+        chatbot_timeout = 10000 if os.getenv("JOBAUTO_CI") else 3000
         try:
             self.page.wait_for_load_state('load', timeout=10000)
         except Exception:
             pass
         self.page.wait_for_timeout(2000)
-        job_links = self._collect_job_links()
+        job_links = self.page.eval_on_selector_all(
+            '.title',
+            'elements => elements.map(element => element.getAttribute("href")) .filter(href => href !==null)'
+        )
         log_info(
-            f"[INFO] Page {self.page_no}: {len(job_links)} job detail links "
+            f"[INFO] Page {self.page_no}: found {len(job_links)} job links "
             f"(applied {self.applied_count}/{self.applno})"
         )
         for job_index, jl in enumerate(job_links, start=1):
@@ -743,7 +573,7 @@ class NaukriBot:
                 self.page.goto(jl, timeout=30000)
                 try:
                     self.page.wait_for_load_state('load', timeout=10000)
-                except:
+                except Exception:
                     pass
                 self.page.wait_for_timeout(1500)
 
@@ -751,83 +581,100 @@ class NaukriBot:
                     log_info(f"[SKIP] Job {job_index}: already applied")
                     continue
 
-                apply_button = self._find_apply_button()
+                try:
+                    if self.page.locator('button:has-text("Apply on company site")').first.is_visible(timeout=1000):
+                        naukri_btn = self.page.locator(
+                            '#apply-button, button:has-text("Apply"):not(:has-text("company"))'
+                        ).first
+                        if not naukri_btn.is_visible(timeout=1000):
+                            log_info(f"[SKIP] Job {job_index}: company-site apply only")
+                            continue
+                except Exception:
+                    pass
+
+                apply_button = None
+                selectors = [
+                    'button:has-text("Apply"):not(:has-text("company"))',
+                    'button:has-text("Apply")',
+                    '#apply-button',
+                    '.apply-button',
+                    '[data-test-id="applyBtn"]',
+                    'button.apply-button-label',
+                ]
+                for selector in selectors:
+                    try:
+                        if apply_button is not None:
+                            break
+                        for elem in self.page.locator(selector).all():
+                            try:
+                                button_text = elem.inner_text()
+                                if (
+                                    button_text.strip() == "Apply"
+                                    and "company site" not in button_text.lower()
+                                    and elem.is_visible(timeout=2000)
+                                ):
+                                    apply_button = elem
+                                    break
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
                 if not apply_button:
                     try:
                         self.page.evaluate('window.scrollBy(0, 500)')
                         self.page.wait_for_timeout(500)
+                        for selector in selectors:
+                            try:
+                                elem = self.page.locator(selector).first
+                                if elem.is_visible(timeout=2000):
+                                    apply_button = elem
+                                    break
+                            except Exception:
+                                pass
                     except Exception:
                         pass
-                    apply_button = self._find_apply_button()
 
                 if not apply_button:
-                    company_only = False
-                    try:
-                        loc = self.page.locator('button:has-text("Apply on company site")')
-                        company_only = loc.first.is_visible(timeout=1000) and self._find_apply_button() is None
-                    except Exception:
-                        pass
-                    if company_only:
-                        log_info(f"[SKIP] Job {job_index}: company-site apply only")
-                    else:
-                        log_info(f"[SKIP] Job {job_index}: no Apply button found")
+                    log_info(f"[SKIP] Job {job_index}: no Apply button found")
                     continue
 
-                if self._submit_apply_click(apply_button):
+                apply_button.click()
+                self.page.wait_for_timeout(1000)
+
+                try:
+                    expect(self.page.locator(".chatbot_MessageContainer")).to_be_visible(
+                        timeout=chatbot_timeout
+                    )
+                    self._answer_chatbot_heuristic()
+                    self.cba.classify_new_question()
                     self.applied_count += 1
                     log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
-                else:
+                except Exception:
                     try:
-                        self.page.screenshot(path=f"apply_failed_job_{job_index}.png")
+                        expect(self.page).to_have_url(self.pattern, timeout=chatbot_timeout)
+                        self.applied_count += 1
+                        log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
                     except Exception:
-                        pass
-                    log_info(
-                        f"[SKIP] Job {job_index}: Apply not confirmed "
-                        f"(url={self.page.url[:90]}...)"
-                    )
+                        log_info(f"[SKIP] Job {job_index}: Apply not confirmed")
             except Exception as e:
                 log_info(f"[SKIP] Job {job_index}: error ({e})")
                 continue
 
-    def _apply_bulk_on_current_page(self):
-        """Use multi-select checkboxes on the search-results page when available."""
-        rounds = 0
-        while self.applied_count < self.applno and rounds < 12:
-            rounds += 1
-            cbapl = self.checkbox_apply()
-            if cbapl["status"] == "quota_exceeded":
-                log_info("[INFO] Daily quota exceeded during bulk apply.")
+        if self.applied_count < self.applno:
+            if self.page_no >= 15:
+                log_info("[WARN] Reached page 15 without hitting target apply count.")
                 return
-            if cbapl["status"] == "underway":
-                self.cba.classify_new_question()
-                try:
-                    expect(self.page).to_have_url(self.pattern, timeout=12000)
-                    self.applied_count += cbapl["clicked"]
-                    log_info(f"✅ Bulk applied {cbapl['clicked']} jobs (total {self.applied_count}/{self.applno}).")
-                except Exception as exc:
-                    log_info(f"[SKIP] Bulk apply chatbot not completed: {exc}")
-                continue
-            if cbapl["status"] == "done":
-                self.applied_count += cbapl["clicked"]
-                log_info(f"✅ Bulk applied {cbapl['clicked']} jobs (total {self.applied_count}/{self.applno}).")
-                continue
-            break
-
-    def _apply_search_results_page(self):
-        self._apply_bulk_on_current_page()
-        if self.applied_count < self.applno:
-            self._apply_from_srp_cards()
-        if self.applied_count < self.applno:
-            self._apply_jobs_on_current_page()
-
-    def _goto_next_results_page(self):
-        self.page_no += 1
-        parsed = urlparse(self.base_page_url)
-        new_path = parsed.path + f"-{self.page_no}"
-        modified_url = urlunparse(parsed._replace(path=new_path))
-        self.page.goto(modified_url, timeout=40000)
-        self.page.wait_for_load_state('domcontentloaded')
-        self.page.wait_for_timeout(2000)
+            self.page_no += 1
+            parsed = urlparse(self.base_page_url)
+            new_path = parsed.path + f"-{self.page_no}"
+            modified_url = urlunparse(parsed._replace(path=new_path))
+            try:
+                self.page.goto(modified_url)
+            except Exception:
+                log_info(f"\n✅ Successfully applied to {self.applied_count} jobs!")
+                return
+            self.apply_()
 
     def filter_apply(self, s, e='', l='', ja='3'):
         self.search = s
@@ -849,31 +696,8 @@ class NaukriBot:
             self.filter_()
             self.base_page_url = self.page.url
             self.page_no = 1
-            zero_progress_pages = 0
             log_info(f"[INFO] Search results ready: {self.base_page_url}")
-
-            while self.applied_count < self.applno and self.page_no <= 25:
-                before = self.applied_count
-                log_info(f"[INFO] === Results page {self.page_no} ===")
-                self._apply_search_results_page()
-                if self.applied_count > before:
-                    zero_progress_pages = 0
-                else:
-                    zero_progress_pages += 1
-                    log_info(
-                        f"[WARN] No applications on page {self.page_no} "
-                        f"({zero_progress_pages}/3 empty pages)"
-                    )
-                    if zero_progress_pages >= 3:
-                        log_info("[ERROR] Stopping after 3 pages with zero applications.")
-                        break
-                if self.applied_count >= self.applno:
-                    break
-                try:
-                    self._goto_next_results_page()
-                except Exception as exc:
-                    log_info(f"[INFO] No more result pages: {exc}")
-                    break
+            self.apply_()
         except Exception as e:
             log_info(f"[ERROR] Error during filter_apply: {e}")
         finally:
