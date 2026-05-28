@@ -452,58 +452,36 @@ class NaukriBot:
             return {"status": "failed"}
 
     def _find_apply_button(self):
-        """Find a visible Naukri Apply button (not company-site-only)."""
-        preferred_texts = ("apply", "apply now", "quick apply", "easy apply")
-        candidates = []
-
-        for selector in (
+        """Find the primary Apply button on a job detail page (ignore sidebar/footer)."""
+        primary_selectors = (
             '#apply-button',
             '[data-test-id="applyBtn"]',
             'button.apply-button-label',
-            '.apply-button',
-            'button',
-            'a',
-        ):
+            '.styles_JDC__apply-button button',
+            '.jd-header button',
+        )
+        for selector in primary_selectors:
             try:
-                for elem in self.page.locator(selector).all():
-                    try:
-                        if not elem.is_visible(timeout=500):
-                            continue
-                        text = " ".join(elem.inner_text().split())
-                        lower = text.lower()
-                        if not lower or "apply" not in lower:
-                            continue
-                        if "company site" in lower or "on company" in lower:
-                            continue
-                        if "applied" in lower and lower not in preferred_texts:
-                            continue
-                        candidates.append((elem, text, lower))
-                    except Exception:
-                        continue
+                elem = self.page.locator(selector).first
+                if not elem.is_visible(timeout=2000):
+                    continue
+                text = " ".join(elem.inner_text().split()).lower()
+                if not text or "apply" not in text:
+                    continue
+                if "company site" in text or text in ("applied", "already applied"):
+                    continue
+                return elem
             except Exception:
                 continue
-
-        if not candidates:
-            return None
-
-        def score(item):
-            _, text, lower = item
-            if lower in preferred_texts:
-                return 0
-            if lower == "apply":
-                return 1
-            if lower.startswith("apply"):
-                return 2
-            return 3
-
-        candidates.sort(key=score)
-        return candidates[0][0]
+        return None
 
     def _job_already_applied(self):
         markers = (
             "text=/already applied/i",
             "text=/you have applied/i",
             "text=/application submitted/i",
+            "button:has-text('Applied')",
+            "text=/applied to this job/i",
         )
         for selector in markers:
             try:
@@ -513,31 +491,83 @@ class NaukriBot:
                 continue
         return False
 
-    def _confirm_apply_success(self):
-        chatbot = self.page.locator(".chatbot_MessageContainer")
-        try:
-            expect(chatbot).to_be_visible(timeout=8000)
-            self.cba.classify_new_question()
+    def _shows_applied_state(self):
+        if self._job_already_applied():
             return True
-        except Exception:
-            pass
         try:
-            expect(self.page).to_have_url(self.pattern, timeout=8000)
-            return True
-        except Exception:
-            pass
-        success_markers = (
-            "text=/application sent/i",
-            "text=/successfully applied/i",
-            "text=/applied successfully/i",
-        )
-        for selector in success_markers:
-            try:
-                if self.page.locator(selector).first.is_visible(timeout=2000):
+            apply_btn = self.page.locator("#apply-button, button.apply-button-label").first
+            if apply_btn.is_visible(timeout=1000):
+                label = apply_btn.inner_text().strip().lower()
+                if "applied" in label and "apply" not in label.replace("applied", ""):
                     return True
+        except Exception:
+            pass
+        return False
+
+    def _click_apply_followups(self):
+        """Handle confirmation modals that appear after the first Apply click."""
+        followups = (
+            "Apply without",
+            "Apply anyway",
+            "Yes",
+            "Confirm",
+            "Submit",
+            "Continue",
+        )
+        for label in followups:
+            try:
+                btn = self.page.get_by_role(
+                    "button", name=re.compile(re.escape(label), re.I)
+                ).first
+                if btn.is_visible(timeout=1200):
+                    btn.click()
+                    self.page.wait_for_timeout(1200)
             except Exception:
                 continue
-        return False
+
+    def _confirm_apply_success(self, timeout_ms=25000):
+        """Wait for chatbot, redirect, or Applied UI after clicking Apply."""
+        deadline = time.time() + (timeout_ms / 1000)
+        chatbot_handled = False
+
+        while time.time() < deadline:
+            if self._shows_applied_state():
+                return True
+            try:
+                if self.pattern.search(self.page.url):
+                    return True
+            except Exception:
+                pass
+
+            chatbot = self.page.locator(".chatbot_MessageContainer")
+            try:
+                if chatbot.is_visible(timeout=500):
+                    if not chatbot_handled:
+                        self.cba.classify_new_question()
+                        chatbot_handled = True
+                    else:
+                        self.page.wait_for_timeout(1000)
+                    if self._shows_applied_state():
+                        return True
+                    continue
+            except Exception:
+                pass
+
+            for selector in (
+                "text=/application sent/i",
+                "text=/successfully applied/i",
+                "text=/applied successfully/i",
+                "text=/we have received your application/i",
+            ):
+                try:
+                    if self.page.locator(selector).first.is_visible(timeout=400):
+                        return True
+                except Exception:
+                    continue
+
+            self.page.wait_for_timeout(800)
+
+        return self._shows_applied_state()
 
     def _collect_job_links(self):
         job_links = self.page.evaluate(
@@ -614,8 +644,13 @@ class NaukriBot:
                         log_info(f"[SKIP] Job {job_index}: no Apply button found")
                     continue
 
-                apply_button.click()
-                self.page.wait_for_timeout(1500)
+                try:
+                    apply_button.scroll_into_view_if_needed(timeout=3000)
+                except Exception:
+                    pass
+                apply_button.click(force=True)
+                self.page.wait_for_timeout(1200)
+                self._click_apply_followups()
 
                 if self._confirm_apply_success():
                     self.applied_count += 1
