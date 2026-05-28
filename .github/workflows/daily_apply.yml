@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -80,4 +82,4 @@ jobs:
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
           JOBAUTO_STORAGE_STATE_PATH: .auth/storage_state.json
         run: |
-          xvfb-run -a python -m jab --email $JOBAUTO_EMAIL --apply
+          xvfb-run -a python -m jab --email $JOBAUTO_EMAIL --apply --filters
