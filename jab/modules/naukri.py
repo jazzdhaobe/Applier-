@@ -537,9 +537,10 @@ class NaukriBot:
             "text=/application submitted/i",
             "text=/your application has been submitted/i",
             "text=/application submitted successfully/i",
+            "text=/applied successfully/i",
             "text=/application received/i",
-            "button:has-text('Applied')",
             "text=/applied to this job/i",
+            "button:has-text('Applied')",
         )
         for selector in markers:
             try:
@@ -635,6 +636,16 @@ class NaukriBot:
                     return True
             except Exception:
                 pass
+            try:
+                if self.page.locator("text=/applied successfully/i").is_visible(timeout=500):
+                    return True
+            except Exception:
+                pass
+            try:
+                if self.page.locator("button:has-text('Applied')").is_visible(timeout=500):
+                    return True
+            except Exception:
+                pass
 
             chatbot = self.page.locator(".chatbot_MessageContainer")
             try:
@@ -652,7 +663,23 @@ class NaukriBot:
                 pass
 
             self.page.wait_for_timeout(500)
-        return self._job_already_applied()
+
+        confirmed = self._job_already_applied()
+        if not confirmed:
+            try:
+                body_text = self.page.locator("body").inner_text(timeout=2000)
+            except Exception:
+                body_text = ""
+            clean_body = body_text[:500].replace("\n", " ")
+            log_info(f"[WARN] Apply click not confirmed. URL={self.page.url}")
+            log_info(f"[WARN] Body excerpt after apply: {clean_body}")
+            try:
+                screenshot_path = f"apply_not_confirmed_{int(time.time())}.png"
+                self.page.screenshot(path=screenshot_path)
+                log_info(f"[DEBUG] Saved failed apply screenshot to {screenshot_path}")
+            except Exception:
+                pass
+        return confirmed
 
     def apply_(self):
         """Per-job apply loop for --apply --filters (same as original working flow)."""
