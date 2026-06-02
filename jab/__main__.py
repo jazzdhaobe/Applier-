@@ -31,14 +31,17 @@ def parse_optional_int(value, default):
 
 def resolve_config(args):
     password = args.password or get_env("JOBAUTO_PASSWORD")
-    if not password:
-        raise SystemExit(
-            "Missing password. Pass --password or set JOBAUTO_PASSWORD."
-        )
-
     storage_state_path = args.storage_state or get_env("JOBAUTO_STORAGE_STATE_PATH")
+
     if getattr(args, "fresh_login", False):
         storage_state_path = None
+
+    if not password and storage_state_path is None:
+        raise SystemExit(
+            "Missing password or storage state. Pass --password or set JOBAUTO_PASSWORD, "
+            "or provide --storage-state / JOBAUTO_STORAGE_STATE_PATH to reuse an existing session."
+        )
+
     save_storage_state_path = (
         args.save_storage_state
         or get_env("JOBAUTO_STORAGE_STATE_OUTPUT")

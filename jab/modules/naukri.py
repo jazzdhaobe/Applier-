@@ -417,6 +417,16 @@ class NaukriBot:
         except Exception:
             return False
 
+    def _ensure_authenticated_session(self):
+        if self._session_is_authenticated():
+            return True
+
+        log_info("[WARN] Session authentication check failed; retrying with homepage restore.")
+        if self._restore_existing_session():
+            return True
+
+        return False
+
     def save_storage_state(self):
         if not self.context or not self.save_storage_state_path:
             return
@@ -911,10 +921,19 @@ class NaukriBot:
             time.sleep(1)
             log_info("[INFO] Applying search filters...")
             self.filter_()
+            try:
+                self.page.wait_for_load_state('networkidle', timeout=20000)
+            except Exception:
+                pass
             self.base_page_url = self.page.url
             self.page_no = 1
-            if not self._session_is_authenticated():
-                log_info("[ERROR] Saved session is not authenticated after applying filters; aborting apply run.")
+            if not self._ensure_authenticated_session():
+                log_info(f"[ERROR] Saved session is not authenticated after applying filters; aborting apply run. Current URL: {self.page.url}")
+                try:
+                    body_excerpt = self.page.locator('body').inner_text()[:500]
+                    log_info(f"[DEBUG] Page body excerpt: {body_excerpt}")
+                except Exception:
+                    pass
                 return {"response": "session invalid", "applied": 0}
             log_info(f"[INFO] Search results ready: {self.base_page_url}")
             self.apply_()

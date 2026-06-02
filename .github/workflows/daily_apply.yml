@@ -43,37 +43,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb
 
-      - name: Prepare browser storage state
-        env:
-          JOBAUTO_STORAGE_STATE: ${{ secrets.JOBAUTO_STORAGE_STATE }}
+      - name: Validate browser storage state when present
         run: |
-          mkdir -p .auth
-          if [ -n "$JOBAUTO_STORAGE_STATE" ]; then
-            printf '%s' "$JOBAUTO_STORAGE_STATE" > .auth/storage_state.json
-            echo "[INFO] Prepared .auth/storage_state.json from JOBAUTO_STORAGE_STATE"
+          if [ -f .auth/storage_state.json ]; then
+            echo "[INFO] Using local .auth/storage_state.json for saved Naukri session"
+            python -c '
+            import json
+            import sys
+            from pathlib import Path
+            path = Path(".auth/storage_state.json")
+            data = json.loads(path.read_text())
+            cookies = data.get("cookies", [])
+            origins = data.get("origins", [])
+            naukri = [c for c in cookies if "naukri" in c.get("domain", "")]
+            print(f"[INFO] storage_state present: {path}")
+            print(f"[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}")
+            if len(naukri) < 3:
+                print("::error::Storage state has too few Naukri cookies; export session locally and place .auth/storage_state.json in the repo workspace.")
+                sys.exit(1)
+            '
           else
-            rm -f .auth/storage_state.json
-            echo "::error::JOBAUTO_STORAGE_STATE secret is missing. Export .auth/storage_state.json locally and add it as a repository secret (see scripts/export_storage_state.py)."
-            exit 1
+            echo "[WARN] .auth/storage_state.json not found. Falling back to password login in this workflow run."
           fi
-
-      - name: Validate browser storage state
-        run: |
-          python -c '
-          import json
-          import sys
-          from pathlib import Path
-          path = Path(".auth/storage_state.json")
-          data = json.loads(path.read_text())
-          cookies = data.get("cookies", [])
-          origins = data.get("origins", [])
-          naukri = [c for c in cookies if "naukri" in c.get("domain", "")]
-          print(f"[INFO] storage_state present: {path}")
-          print(f"[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}")
-          if len(naukri) < 3:
-              print("::error::Storage state has too few Naukri cookies; re-export session locally.")
-              sys.exit(1)
-          '
 
       - name: Ensure NLTK resources
         run: |
