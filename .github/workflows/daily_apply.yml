@@ -43,13 +43,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb
 
+      - name: Prepare browser storage state
+        env:
+          JOBAUTO_STORAGE_STATE: ${{ secrets.JOBAUTO_STORAGE_STATE }}
+        run: |
+          mkdir -p .auth
+          if [ -n "$JOBAUTO_STORAGE_STATE" ]; then
+            printf '%s' "$JOBAUTO_STORAGE_STATE" > .auth/storage_state.json
+            echo "[INFO] Prepared .auth/storage_state.json from JOBAUTO_STORAGE_STATE"
+          elif [ -f .auth/storage_state.json ]; then
+            echo "[INFO] Using existing .auth/storage_state.json"
+          else
+            echo "[WARN] No saved session file available; will fall back to password login if needed."
+          fi
+
       - name: Validate browser storage state when present
         run: |
           if [ -f .auth/storage_state.json ]; then
-            echo "[INFO] Using local .auth/storage_state.json for saved Naukri session"
+            echo "[INFO] Validating .auth/storage_state.json"
             python -c '
             import json
-            import sys
             from pathlib import Path
             path = Path(".auth/storage_state.json")
             data = json.loads(path.read_text())
@@ -59,11 +72,10 @@ jobs:
             print(f"[INFO] storage_state present: {path}")
             print(f"[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}")
             if len(naukri) < 3:
-                print("::error::Storage state has too few Naukri cookies; export session locally and place .auth/storage_state.json in the repo workspace.")
-                sys.exit(1)
+                print("[WARN] storage_state has too few Naukri cookies; it may not authenticate.")
             '
           else
-            echo "[WARN] .auth/storage_state.json not found. Falling back to password login in this workflow run."
+            echo "[INFO] No .auth/storage_state.json to validate; continuing with password login fallback."
           fi
 
       - name: Ensure NLTK resources

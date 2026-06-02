@@ -48,8 +48,9 @@ You can run the applier from GitHub Actions so it runs every day even if your la
 - Add repository secrets (Settings → Secrets → Actions):
   - `JOBAUTO_EMAIL` — your Naukri email
   - `JOBAUTO_PASSWORD` — your Naukri password
+  - `JOBAUTO_STORAGE_STATE` — full JSON from `.auth/storage_state.json` (optional but recommended for CI)
 - The bot can reuse a local Playwright storage state file via `--storage-state` or `JOBAUTO_STORAGE_STATE_PATH`, which avoids password login and OTP when the saved session is still valid.
-- The GitHub Actions workflow can now fall back to password login if `.auth/storage_state.json` is not present. However, saved session reuse is still recommended to avoid OTP and improve reliability.
+- The GitHub Actions workflow can now use `JOBAUTO_STORAGE_STATE` if set, or fall back to a local `.auth/storage_state.json` file, and if neither is available it will use password login.
 - The workflow is at `.github/workflows/daily_apply.yml` and runs daily at 09:00 IST (50 applications with `--filters`). It can also be triggered manually via the Actions tab.
 
 **Export / refresh session for CI** (run locally after logging in once if OTP appears):

@@ -32,14 +32,25 @@ def parse_optional_int(value, default):
 def resolve_config(args):
     password = args.password or get_env("JOBAUTO_PASSWORD")
     storage_state_path = args.storage_state or get_env("JOBAUTO_STORAGE_STATE_PATH")
+    storage_state_json = get_env("JOBAUTO_STORAGE_STATE")
 
     if getattr(args, "fresh_login", False):
         storage_state_path = None
+    elif storage_state_path is None and storage_state_json:
+        storage_state_path = ".auth/storage_state.json"
+        try:
+            storage_state_file = Path(storage_state_path)
+            storage_state_file.parent.mkdir(parents=True, exist_ok=True)
+            storage_state_file.write_text(storage_state_json, encoding="utf-8")
+        except Exception as exc:
+            raise SystemExit(
+                f"Unable to write storage state from JOBAUTO_STORAGE_STATE: {exc}"
+            )
 
     if not password and storage_state_path is None:
         raise SystemExit(
             "Missing password or storage state. Pass --password or set JOBAUTO_PASSWORD, "
-            "or provide --storage-state / JOBAUTO_STORAGE_STATE_PATH to reuse an existing session."
+            "or provide --storage-state / JOBAUTO_STORAGE_STATE_PATH / JOBAUTO_STORAGE_STATE to reuse an existing session."
         )
 
     save_storage_state_path = (
