@@ -741,8 +741,28 @@ class NaukriBot:
                     apply_button.scroll_into_view_if_needed(timeout=3000)
                 except Exception:
                     pass
-                apply_button.click()
-                self.page.wait_for_timeout(1000)
+
+                try:
+                    button_text = apply_button.inner_text(timeout=2000).strip()
+                except Exception:
+                    button_text = "<unknown>"
+                try:
+                    button_html = apply_button.evaluate("el => el.outerHTML")
+                except Exception:
+                    button_html = "<outerHTML failed>"
+                log_info(f"[DEBUG] Clicking Apply button: text={button_text!r}")
+                log_info(f"[DEBUG] Apply button html snippet: {button_html[:300]}")
+
+                try:
+                    apply_button.click(force=True)
+                except Exception as exc:
+                    log_info(f"[WARN] Apply button click failed: {exc}")
+                    raise
+                try:
+                    self.page.wait_for_load_state('networkidle', timeout=8000)
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(2000)
 
                 if self._complete_apply_after_click(timeout_ms=chatbot_timeout):
                     self.applied_count += 1
