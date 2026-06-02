@@ -201,6 +201,11 @@ class NaukriBot:
         self.storage_state_path = storage_state_path
         self.save_storage_state_path = save_storage_state_path or storage_state_path
         self.experience_years = "2"
+        self.success_url_patterns = [
+            re.compile(r'https://.*/myapply/saveApply\?strJobsarr='),
+            re.compile(r'https://.*/myapply/thankyou.*'),
+            re.compile(r'https://.*/apply-workflow.*'),
+        ]
 
     def _chatbot_contexts(self):
         contexts = [self.page]
@@ -208,6 +213,31 @@ class NaukriBot:
             if frame != self.page.main_frame:
                 contexts.append(frame)
         return contexts
+
+    def _all_pages(self):
+        return [self.page] + [p for p in self.context.pages if p != self.page]
+
+    def _all_page_urls(self):
+        return [p.url for p in self._all_pages()]
+
+    def _search_contexts(self):
+        contexts = []
+        for page in self._all_pages():
+            contexts.append(page)
+            for frame in page.frames:
+                if frame != page.main_frame:
+                    contexts.append(frame)
+        return contexts
+
+    def _any_page_matches_success_url(self):
+        for page in self._all_pages():
+            for pattern in self.success_url_patterns:
+                try:
+                    if pattern.search(page.url):
+                        return True
+                except Exception:
+                    continue
+        return False
 
     def _answer_chatbot_heuristic(self):
         """Answer screening questions without the ML model (reliable in CI)."""
@@ -326,10 +356,43 @@ class NaukriBot:
     def _session_is_authenticated(self):
         try:
             current_url = self.page.url
+            # Logged-in Naukri user should be on a member page and show account/profile UI
             if current_url.startswith("https://www.naukri.com/mnjuser/homepage"):
                 return True
-            if self.page.locator('text=/My Naukri|Dashboard|Applications|Profile|Jobs/i').count() > 0:
+            if current_url.startswith("https://www.naukri.com/mnjuser"):
                 return True
+
+            authenticated_selectors = (
+                'text=/My Naukri/i',
+                'text=/Logout/i',
+                'text=/Sign out/i',
+                'text=/Hello/i',
+                'text=/Profile/i',
+            )
+            for selector in authenticated_selectors:
+                try:
+                    if self.page.locator(selector).first.is_visible(timeout=1000):
+                        return True
+                except Exception:
+                    continue
+
+            # If login fields are visible, the session is not authenticated.
+            login_selectors = (
+                '#usernameField',
+                'input[placeholder="Enter Email ID / Username"]',
+                'input[placeholder="Enter your active Email ID / Username"]',
+                'input[placeholder="Enter Password"]',
+                'input[placeholder="Enter your password"]',
+                'text=/Login/i',
+                'text=/Sign in/i',
+            )
+            for selector in login_selectors:
+                try:
+                    if self.page.locator(selector).first.is_visible(timeout=1000):
+                        return False
+                except Exception:
+                    continue
+
             return False
         except Exception:
             return False
@@ -531,6 +594,8 @@ class NaukriBot:
             return {"status": "failed"}
 
     def _job_already_applied(self):
+        contexts = self._search_contexts()
+        contexts = self._search_contexts()
         markers = (
             "text=/already applied/i",
             "text=/you have applied/i",
@@ -538,16 +603,54 @@ class NaukriBot:
             "text=/your application has been submitted/i",
             "text=/application submitted successfully/i",
             "text=/applied successfully/i",
+            "text=/thank you for applying/i",
             "text=/application received/i",
             "text=/applied to this job/i",
             "button:has-text('Applied')",
         )
-        for selector in markers:
+        for ctx in contexts:
+            for selector in markers:
+                try:
+                    if ctx.locator(selector).first.is_visible(timeout=1500):
+                        return True
+                except Exception:
+                    continue
+        return False
+
+    def _handle_google_login_prompt(self):
+        pages = self._all_pages()
+        found_prompt = False
+        for ctx in pages:
             try:
-                if self.page.locator(selector).first.is_visible(timeout=1500):
-                    return True
+                prompt = ctx.locator('button:has-text("Continue with Google"), text=/continue with google/i').first
+                if prompt.is_visible(timeout=1500):
+                    found_prompt = True
+                    log_info("[INFO] Google sign-in prompt detected; attempting account selection.")
+                    prompt.click(force=True)
+                    ctx.wait_for_timeout(3000)
             except Exception:
                 continue
+
+        account_selectors = (
+            f'button:has-text("{self.username}")',
+            f'div[role="button"]:has-text("{self.username}")',
+            f'span:has-text("{self.username}")',
+            'text=/@gmail\.com/i',
+        )
+        for ctx in pages:
+            for selector in account_selectors:
+                try:
+                    account = ctx.locator(selector).first
+                    if account.is_visible(timeout=3000):
+                        account.click(force=True)
+                        ctx.wait_for_timeout(4000)
+                        log_info("[INFO] Selected Google account for sign-in.")
+                        return True
+                except Exception:
+                    continue
+
+        if found_prompt:
+            log_info("[WARN] Google sign-in prompt was detected but account selection was not possible.")
         return False
 
     def _find_apply_button(self):
@@ -613,37 +716,46 @@ class NaukriBot:
         """Wait for chatbot or success after clicking Apply."""
         deadline = time.time() + (timeout_ms / 1000)
         while time.time() < deadline:
+            pages = self._all_pages()
             if self._job_already_applied():
                 return True
             try:
-                if self.pattern.search(self.page.url):
+                if self._any_page_matches_success_url():
                     return True
             except Exception:
                 pass
 
+            if self._handle_google_login_prompt():
+                continue
+
+            success_selectors = (
+                "text=/your application has been submitted/i",
+                "text=/application submitted successfully/i",
+                "text=/application received/i",
+                "text=/applied successfully/i",
+                "text=/thank you for applying/i",
+                "button:has-text('Applied')",
+            )
+            for ctx in pages:
+                for selector in success_selectors:
+                    try:
+                        if ctx.locator(selector).is_visible(timeout=500):
+                            return True
+                    except Exception:
+                        continue
+
+            chatbot = self.page.locator(".chatbot_MessageContainer")
             try:
-                if self.page.locator("text=/your application has been submitted/i").is_visible(timeout=500):
-                    return True
-            except Exception:
-                pass
-            try:
-                if self.page.locator("text=/application submitted successfully/i").is_visible(timeout=500):
-                    return True
-            except Exception:
-                pass
-            try:
-                if self.page.locator("text=/application received/i").is_visible(timeout=500):
-                    return True
-            except Exception:
-                pass
-            try:
-                if self.page.locator("text=/applied successfully/i").is_visible(timeout=500):
-                    return True
-            except Exception:
-                pass
-            try:
-                if self.page.locator("button:has-text('Applied')").is_visible(timeout=500):
-                    return True
+                if chatbot.is_visible(timeout=500):
+                    self._answer_chatbot_heuristic()
+                    try:
+                        self.cba.classify_new_question()
+                    except Exception as exc:
+                        log_info(f"[WARN] Chatbot model step: {exc}")
+                    if self._job_already_applied():
+                        return True
+                    if not chatbot.is_visible(timeout=1000):
+                        return True
             except Exception:
                 pass
 
@@ -671,10 +783,10 @@ class NaukriBot:
             except Exception:
                 body_text = ""
             clean_body = body_text[:500].replace("\n", " ")
-            log_info(f"[WARN] Apply click not confirmed. URL={self.page.url}")
+            log_info(f"[WARN] Apply click not confirmed. URLs={self._all_page_urls()}")
             log_info(f"[WARN] Body excerpt after apply: {clean_body}")
             try:
-                screenshot_path = f"apply_not_confirmed_{int(time.time())}.png"
+                screenshot_path = f"apply_failed_{int(time.time())}.png"
                 self.page.screenshot(path=screenshot_path)
                 log_info(f"[DEBUG] Saved failed apply screenshot to {screenshot_path}")
             except Exception:
@@ -716,6 +828,10 @@ class NaukriBot:
                     log_info(f"[SKIP] Job {job_index}: already applied")
                     continue
 
+                if self._handle_google_login_prompt():
+                    self.page.wait_for_timeout(3000)
+                    self.page.wait_for_load_state('load', timeout=10000)
+
                 apply_button = self._find_apply_button()
                 if not apply_button:
                     try:
@@ -738,31 +854,20 @@ class NaukriBot:
                     continue
 
                 try:
+                    button_text = " ".join(apply_button.inner_text().split())
+                    log_info(f"[DEBUG] Clicking apply button: {button_text}")
+                except Exception:
+                    pass
+                try:
                     apply_button.scroll_into_view_if_needed(timeout=3000)
                 except Exception:
                     pass
-
+                apply_button.click(force=True)
                 try:
-                    button_text = apply_button.inner_text(timeout=2000).strip()
-                except Exception:
-                    button_text = "<unknown>"
-                try:
-                    button_html = apply_button.evaluate("el => el.outerHTML")
-                except Exception:
-                    button_html = "<outerHTML failed>"
-                log_info(f"[DEBUG] Clicking Apply button: text={button_text!r}")
-                log_info(f"[DEBUG] Apply button html snippet: {button_html[:300]}")
-
-                try:
-                    apply_button.click(force=True)
-                except Exception as exc:
-                    log_info(f"[WARN] Apply button click failed: {exc}")
-                    raise
-                try:
-                    self.page.wait_for_load_state('networkidle', timeout=8000)
+                    self.page.wait_for_load_state('networkidle', timeout=5000)
                 except Exception:
                     pass
-                self.page.wait_for_timeout(2000)
+                self.page.wait_for_timeout(1000)
 
                 if self._complete_apply_after_click(timeout_ms=chatbot_timeout):
                     self.applied_count += 1
@@ -808,6 +913,9 @@ class NaukriBot:
             self.filter_()
             self.base_page_url = self.page.url
             self.page_no = 1
+            if not self._session_is_authenticated():
+                log_info("[ERROR] Saved session is not authenticated after applying filters; aborting apply run.")
+                return {"response": "session invalid", "applied": 0}
             log_info(f"[INFO] Search results ready: {self.base_page_url}")
             self.apply_()
         except Exception as e:
