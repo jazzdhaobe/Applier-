@@ -535,6 +535,9 @@ class NaukriBot:
             "text=/already applied/i",
             "text=/you have applied/i",
             "text=/application submitted/i",
+            "text=/your application has been submitted/i",
+            "text=/application submitted successfully/i",
+            "text=/application received/i",
             "button:has-text('Applied')",
             "text=/applied to this job/i",
         )
@@ -546,9 +549,114 @@ class NaukriBot:
                 continue
         return False
 
+    def _find_apply_button(self):
+        """Locate the main job Apply control on a job description page."""
+        primary = (
+            "#apply-button",
+            '[data-test-id="applyBtn"]',
+            "button.apply-button-label",
+            ".styles_JDC__apply-button button",
+        )
+        for selector in primary:
+            try:
+                btn = self.page.locator(selector).first
+                if not btn.is_visible(timeout=2500):
+                    continue
+                text = " ".join(btn.inner_text().split()).lower()
+                if "company site" in text or text in ("applied", "already applied"):
+                    continue
+                if re.search(r"\bapply\b", text):
+                    return btn
+            except Exception:
+                continue
+
+        extra_selectors = (
+            'button:has-text("Apply")',
+            'a:has-text("Apply")',
+            'button:has-text("Apply Now")',
+            'a:has-text("Apply Now")',
+            'button[data-test-id="applyBtn"]',
+            'button[data-automation="applyBtn"]',
+        )
+        for selector in extra_selectors:
+            try:
+                btn = self.page.locator(selector).first
+                if not btn.is_visible(timeout=2500):
+                    continue
+                text = " ".join(btn.inner_text().split()).lower()
+                if "company site" in text or text in ("applied", "already applied"):
+                    continue
+                return btn
+            except Exception:
+                continue
+
+        try:
+            for btn in self.page.get_by_role("button", name=re.compile(r"apply", re.I)).all():
+                try:
+                    if not btn.is_visible(timeout=500):
+                        continue
+                    text = " ".join(btn.inner_text().split()).lower()
+                    if "company site" in text:
+                        continue
+                    if text in ("applied", "already applied"):
+                        continue
+                    if re.search(r"\bapply\b", text):
+                        return btn
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return None
+
+    def _complete_apply_after_click(self, timeout_ms=20000):
+        """Wait for chatbot or success after clicking Apply."""
+        deadline = time.time() + (timeout_ms / 1000)
+        while time.time() < deadline:
+            if self._job_already_applied():
+                return True
+            try:
+                if self.pattern.search(self.page.url):
+                    return True
+            except Exception:
+                pass
+
+            try:
+                if self.page.locator("text=/your application has been submitted/i").is_visible(timeout=500):
+                    return True
+            except Exception:
+                pass
+            try:
+                if self.page.locator("text=/application submitted successfully/i").is_visible(timeout=500):
+                    return True
+            except Exception:
+                pass
+            try:
+                if self.page.locator("text=/application received/i").is_visible(timeout=500):
+                    return True
+            except Exception:
+                pass
+
+            chatbot = self.page.locator(".chatbot_MessageContainer")
+            try:
+                if chatbot.is_visible(timeout=500):
+                    self._answer_chatbot_heuristic()
+                    try:
+                        self.cba.classify_new_question()
+                    except Exception as exc:
+                        log_info(f"[WARN] Chatbot model step: {exc}")
+                    if self._job_already_applied():
+                        return True
+                    if not chatbot.is_visible(timeout=1000):
+                        return True
+            except Exception:
+                pass
+
+            self.page.wait_for_timeout(500)
+        return self._job_already_applied()
+
     def apply_(self):
-        """Same per-job apply loop used when running locally with --apply --filters."""
-        chatbot_timeout = 10000 if os.getenv("JOBAUTO_CI") else 3000
+        """Per-job apply loop for --apply --filters (same as original working flow)."""
+        chatbot_timeout = 20000
         try:
             self.page.wait_for_load_state('load', timeout=10000)
         except Exception:
@@ -575,88 +683,45 @@ class NaukriBot:
                     self.page.wait_for_load_state('load', timeout=10000)
                 except Exception:
                     pass
-                self.page.wait_for_timeout(1500)
+                self.page.wait_for_timeout(2500)
 
                 if self._job_already_applied():
                     log_info(f"[SKIP] Job {job_index}: already applied")
                     continue
 
-                try:
-                    if self.page.locator('button:has-text("Apply on company site")').first.is_visible(timeout=1000):
-                        naukri_btn = self.page.locator(
-                            '#apply-button, button:has-text("Apply"):not(:has-text("company"))'
-                        ).first
-                        if not naukri_btn.is_visible(timeout=1000):
+                apply_button = self._find_apply_button()
+                if not apply_button:
+                    try:
+                        self.page.evaluate("window.scrollTo(0, 0)")
+                        self.page.wait_for_timeout(300)
+                        self.page.evaluate("window.scrollBy(0, 600)")
+                        self.page.wait_for_timeout(500)
+                    except Exception:
+                        pass
+                    apply_button = self._find_apply_button()
+
+                if not apply_button:
+                    try:
+                        if self.page.locator('button:has-text("Apply on company site")').first.is_visible(timeout=1000):
                             log_info(f"[SKIP] Job {job_index}: company-site apply only")
                             continue
-                except Exception:
-                    pass
-
-                apply_button = None
-                selectors = [
-                    'button:has-text("Apply"):not(:has-text("company"))',
-                    'button:has-text("Apply")',
-                    '#apply-button',
-                    '.apply-button',
-                    '[data-test-id="applyBtn"]',
-                    'button.apply-button-label',
-                ]
-                for selector in selectors:
-                    try:
-                        if apply_button is not None:
-                            break
-                        for elem in self.page.locator(selector).all():
-                            try:
-                                button_text = elem.inner_text()
-                                if (
-                                    button_text.strip() == "Apply"
-                                    and "company site" not in button_text.lower()
-                                    and elem.is_visible(timeout=2000)
-                                ):
-                                    apply_button = elem
-                                    break
-                            except Exception:
-                                pass
                     except Exception:
                         pass
-
-                if not apply_button:
-                    try:
-                        self.page.evaluate('window.scrollBy(0, 500)')
-                        self.page.wait_for_timeout(500)
-                        for selector in selectors:
-                            try:
-                                elem = self.page.locator(selector).first
-                                if elem.is_visible(timeout=2000):
-                                    apply_button = elem
-                                    break
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-
-                if not apply_button:
                     log_info(f"[SKIP] Job {job_index}: no Apply button found")
                     continue
 
+                try:
+                    apply_button.scroll_into_view_if_needed(timeout=3000)
+                except Exception:
+                    pass
                 apply_button.click()
                 self.page.wait_for_timeout(1000)
 
-                try:
-                    expect(self.page.locator(".chatbot_MessageContainer")).to_be_visible(
-                        timeout=chatbot_timeout
-                    )
-                    self._answer_chatbot_heuristic()
-                    self.cba.classify_new_question()
+                if self._complete_apply_after_click(timeout_ms=chatbot_timeout):
                     self.applied_count += 1
                     log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
-                except Exception:
-                    try:
-                        expect(self.page).to_have_url(self.pattern, timeout=chatbot_timeout)
-                        self.applied_count += 1
-                        log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
-                    except Exception:
-                        log_info(f"[SKIP] Job {job_index}: Apply not confirmed")
+                else:
+                    log_info(f"[SKIP] Job {job_index}: Apply not confirmed")
             except Exception as e:
                 log_info(f"[SKIP] Job {job_index}: error ({e})")
                 continue
