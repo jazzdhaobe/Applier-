@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import sys
-from pathlib import Path
 from .modules.model import ChatbotBuild
 from .modules.naukri import NaukriBot
 
@@ -38,10 +37,8 @@ def resolve_config(args):
         )
 
     storage_state_path = args.storage_state or get_env("JOBAUTO_STORAGE_STATE_PATH")
-    if not storage_state_path:
-        default_auth = Path(".auth/storage_state.json")
-        if default_auth.is_file():
-            storage_state_path = str(default_auth)
+    if getattr(args, "fresh_login", False):
+        storage_state_path = None
     save_storage_state_path = (
         args.save_storage_state
         or get_env("JOBAUTO_STORAGE_STATE_OUTPUT")
@@ -99,6 +96,11 @@ def main():
         "--verify-login",
         action="store_true",
         help="only verify that login/session works, then exit",
+    )
+    parser.add_argument(
+        "--fresh-login",
+        action="store_true",
+        help="ignore saved session file and login with password (local default behavior)",
     )
     args = parser.parse_args()
 
