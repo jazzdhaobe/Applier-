@@ -5,6 +5,10 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Confirm manual run'
+        required: false
 
 jobs:
   apply:
