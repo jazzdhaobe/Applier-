@@ -1,4 +1,7 @@
-name: Daily 9AM Auto Job Applier
+name: Daily Auto-Job-Applier
+permissions:
+  contents: read
+  actions: read
 
 on:
   schedule:
