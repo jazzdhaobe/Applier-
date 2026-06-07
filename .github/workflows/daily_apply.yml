@@ -7,11 +7,6 @@ on:
   schedule:
     # Runs at 09:00 IST (03:30 UTC) daily — adjust cron if you need a different timezone
     - cron: '30 3 * * *'
-  workflow_dispatch:
-    inputs:
-      confirm:
-        description: 'Confirm manual run'
-        required: false
 
 jobs:
   apply:
