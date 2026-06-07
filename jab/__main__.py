@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 from .modules.model import ChatbotBuild
 from .modules.naukri import NaukriBot
 
@@ -46,6 +47,13 @@ def resolve_config(args):
             raise SystemExit(
                 f"Unable to write storage state from JOBAUTO_STORAGE_STATE: {exc}"
             )
+    # If no explicit storage_state path was provided, but a default storage
+    # file exists on disk, use it automatically so users can run the CLI
+    # without passing `--storage-state` (previous behavior).
+    elif storage_state_path is None:
+        default_path = Path(".auth/storage_state.json")
+        if default_path.exists():
+            storage_state_path = str(default_path)
 
     if not password and storage_state_path is None:
         raise SystemExit(

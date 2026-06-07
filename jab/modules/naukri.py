@@ -499,6 +499,14 @@ class NaukriBot:
 
             self.dismiss_cookie_banner()
 
+            if self._click_google_login_button():
+                if self._handle_google_login_prompt():
+                    if self._session_is_authenticated():
+                        self.save_storage_state()
+                        log_info("[INFO] Google login successful! Starting job applications...")
+                        return True
+                    log_info("[WARN] Google sign-in flow completed but authentication was not confirmed.")
+
             username = self.page.locator(
                 '#usernameField, input[placeholder="Enter Email ID / Username"], input[placeholder="Enter your active Email ID / Username"]'
             ).first
@@ -627,12 +635,39 @@ class NaukriBot:
                     continue
         return False
 
+    def _click_google_login_button(self):
+        pages = self._all_pages()
+        for ctx in pages:
+            for selector in (
+                'button:has-text("Sign in with Google")',
+                'button:has-text("Sign in with google")',
+                'button:has-text("Login with Google")',
+                'button:has-text("Continue with Google")',
+                'text=/sign in with google/i',
+                'text=/continue with google/i',
+            ):
+                try:
+                    btn = ctx.locator(selector).first
+                    if btn.is_visible(timeout=1500):
+                        log_info("[INFO] Google sign-in button detected; clicking it.")
+                        btn.click(force=True)
+                        ctx.wait_for_timeout(3000)
+                        return True
+                except Exception:
+                    continue
+        return False
+
     def _handle_google_login_prompt(self):
         pages = self._all_pages()
         found_prompt = False
         for ctx in pages:
             try:
-                prompt = ctx.locator('button:has-text("Continue with Google"), text=/continue with google/i').first
+                prompt = ctx.locator(
+                    'button:has-text("Continue with Google"), '
+                    'button:has-text("Sign in with Google"), '
+                    'text=/continue with google/i, '
+                    'text=/sign in with google/i'
+                ).first
                 if prompt.is_visible(timeout=1500):
                     found_prompt = True
                     log_info("[INFO] Google sign-in prompt detected; attempting account selection.")
