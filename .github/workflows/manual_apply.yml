@@ -1,12 +1,9 @@
-name: Daily Auto-Job-Applier
+name: Manual Auto-Job-Applier
 permissions:
   contents: read
   actions: read
 
 on:
-  schedule:
-    # Runs at 09:00 IST (03:30 UTC) daily — adjust cron if you need a different timezone
-    - cron: '30 3 * * *'
   workflow_dispatch: {}
 
 jobs:
@@ -109,8 +106,6 @@ PY
           xvfb-run -a python -u -m jab --email $JOBAUTO_EMAIL --verify-login
 
       - name: Run Auto-Job-Applier
-        # Same as local: python -m jab --email YOU --apply --filters --password PASS
-        # Password and session come from secrets; xvfb provides a display on Linux.
         env:
           JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
