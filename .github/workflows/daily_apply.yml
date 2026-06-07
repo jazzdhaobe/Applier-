@@ -1,4 +1,4 @@
-name: Daily Auto-Job-Applier
+name: Daily 9AM Auto Job Applier
 
 on:
   schedule:
