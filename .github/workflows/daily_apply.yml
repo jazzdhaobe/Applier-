@@ -81,6 +81,10 @@ print(f"[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len
 if len(naukri) < 3:
     print('[WARN] storage_state has too few Naukri cookies; it may not authenticate.')
 PYEOF
+          else
+            echo "[INFO] No .auth/storage_state.json to validate; continuing with password login fallback."
+          fi
+
       - name: Ensure NLTK resources
         run: |
           python -m nltk.downloader punkt punkt_tab wordnet
