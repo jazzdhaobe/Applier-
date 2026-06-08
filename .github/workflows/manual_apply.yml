@@ -1,4 +1,5 @@
 name: Manual Auto-Job-Applier
+
 permissions:
   contents: read
   actions: read
@@ -14,6 +15,7 @@ jobs:
   apply:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+
     env:
       JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
       JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
@@ -22,6 +24,7 @@ jobs:
       JOBAUTO_CI: "1"
       PYTHONUNBUFFERED: "1"
       TF_CPP_MIN_LOG_LEVEL: "2"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,11 +55,14 @@ jobs:
           JOBAUTO_STORAGE_STATE: ${{ secrets.JOBAUTO_STORAGE_STATE }}
         run: |
           mkdir -p .auth
+
           if [ -n "$JOBAUTO_STORAGE_STATE" ]; then
             printf '%s' "$JOBAUTO_STORAGE_STATE" > .auth/storage_state.json
             echo "[INFO] Prepared .auth/storage_state.json from JOBAUTO_STORAGE_STATE"
+
           elif [ -f .auth/storage_state.json ]; then
             echo "[INFO] Using existing .auth/storage_state.json"
+
           else
             echo "[WARN] No saved session file available; will fall back to password login if needed."
           fi
@@ -65,19 +71,30 @@ jobs:
         run: |
           if [ -f .auth/storage_state.json ]; then
             echo "[INFO] Validating .auth/storage_state.json"
-            python3 -c "
-            import json
-            from pathlib import Path
-            path = Path('.auth/storage_state.json')
-            data = json.loads(path.read_text())
-            cookies = data.get('cookies', [])
-            origins = data.get('origins', [])
-            naukri = [c for c in cookies if 'naukri' in c.get('domain', '')]
-            print(f'[INFO] storage_state present: {path}')
-            print(f'[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}')
-            if len(naukri) < 3:
-                print('[WARN] storage_state has too few Naukri cookies; it may not authenticate.')
-            "
+
+            python3 <<'PY'
+import json
+from pathlib import Path
+
+path = Path('.auth/storage_state.json')
+
+data = json.loads(path.read_text())
+
+cookies = data.get('cookies', [])
+origins = data.get('origins', [])
+
+naukri = [
+    c for c in cookies
+    if 'naukri' in c.get('domain', '')
+]
+
+print(f'[INFO] storage_state present: {path}')
+print(f'[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}')
+
+if len(naukri) < 3:
+    print('[WARN] storage_state has too few Naukri cookies; it may not authenticate.')
+PY
+
           else
             echo "[INFO] No .auth/storage_state.json to validate; continuing with password login fallback."
           fi
@@ -92,6 +109,7 @@ jobs:
         run: |
           MODEL_DIR="jab/data/$JOBAUTO_EMAIL"
           MODEL_PATH="$MODEL_DIR/model.keras"
+
           if [ ! -f "$MODEL_PATH" ]; then
             echo "Model not found at $MODEL_PATH — training now"
             python -m jab --email $JOBAUTO_EMAIL --train
@@ -105,7 +123,7 @@ jobs:
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
           JOBAUTO_STORAGE_STATE_PATH: .auth/storage_state.json
         run: |
-          xvfb-run -a python -u -m jab --email $JOBAUTO_EMAIL --verify-login
+          xvfb-run -a python -u -m jab --email "$JOBAUTO_EMAIL" --verify-login
 
       - name: Run Auto-Job-Applier
         env:
