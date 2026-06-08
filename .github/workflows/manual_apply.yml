@@ -73,35 +73,7 @@ jobs:
           if [ -f ".auth/storage_state.json" ]; then
             echo "[INFO] Validating .auth/storage_state.json"
 
-            python3 - <<'EOF'
-            import json
-            from pathlib import Path
-
-            path = Path(".auth/storage_state.json")
-
-            try:
-                data = json.loads(path.read_text())
-
-                cookies = data.get("cookies", [])
-                origins = data.get("origins", [])
-
-                naukri = [
-                    c for c in cookies
-                    if "naukri" in c.get("domain", "")
-                ]
-
-                print(f"[INFO] storage_state present: {path}")
-                print(f"[INFO] cookies={len(cookies)}")
-                print(f"[INFO] origins={len(origins)}")
-                print(f"[INFO] naukri_cookies={len(naukri)}")
-
-                if len(naukri) < 3:
-                    print("[WARN] Too few Naukri cookies. Session may be expired.")
-
-            except Exception as e:
-                print(f"[ERROR] Invalid storage_state.json: {e}")
-                raise
-            EOF
+            python3 -c "import json; from pathlib import Path; path = Path('.auth/storage_state.json'); data = json.loads(path.read_text()); cookies = data.get('cookies', []); origins = data.get('origins', []); naukri = [c for c in cookies if 'naukri' in c.get('domain', '')]; print(f'[INFO] storage_state present: {path}'); print(f'[INFO] cookies={len(cookies)}'); print(f'[INFO] origins={len(origins)}'); print(f'[INFO] naukri_cookies={len(naukri)}'); print('[WARN] Too few Naukri cookies. Session may be expired.') if len(naukri) < 3 else None"
 
           else
             echo "[INFO] No storage state file found. Continuing..."
