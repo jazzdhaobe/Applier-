@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Confirm manual run'
+        description: "Confirm manual run"
         required: false
 
 jobs:
@@ -26,15 +26,15 @@ jobs:
       TF_CPP_MIN_LOG_LEVEL: "2"
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: main
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -58,45 +58,53 @@ jobs:
 
           if [ -n "$JOBAUTO_STORAGE_STATE" ]; then
             printf '%s' "$JOBAUTO_STORAGE_STATE" > .auth/storage_state.json
-            echo "[INFO] Prepared .auth/storage_state.json from JOBAUTO_STORAGE_STATE"
+            echo "[INFO] Prepared .auth/storage_state.json from secret"
 
-          elif [ -f .auth/storage_state.json ]; then
+          elif [ -f ".auth/storage_state.json" ]; then
             echo "[INFO] Using existing .auth/storage_state.json"
 
           else
-            echo "[WARN] No saved session file available; will fall back to password login if needed."
+            echo "[WARN] No saved session found. Will use password login fallback."
           fi
 
       - name: Validate browser storage state when present
+        shell: bash
         run: |
-          if [ -f .auth/storage_state.json ]; then
+          if [ -f ".auth/storage_state.json" ]; then
             echo "[INFO] Validating .auth/storage_state.json"
 
-            python3 <<'PY'
-import json
-from pathlib import Path
+            python3 <<'EOF'
+            import json
+            from pathlib import Path
 
-path = Path('.auth/storage_state.json')
+            path = Path(".auth/storage_state.json")
 
-data = json.loads(path.read_text())
+            try:
+                data = json.loads(path.read_text())
 
-cookies = data.get('cookies', [])
-origins = data.get('origins', [])
+                cookies = data.get("cookies", [])
+                origins = data.get("origins", [])
 
-naukri = [
-    c for c in cookies
-    if 'naukri' in c.get('domain', '')
-]
+                naukri = [
+                    c for c in cookies
+                    if "naukri" in c.get("domain", "")
+                ]
 
-print(f'[INFO] storage_state present: {path}')
-print(f'[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}')
+                print(f"[INFO] storage_state present: {path}")
+                print(f"[INFO] cookies={len(cookies)}")
+                print(f"[INFO] origins={len(origins)}")
+                print(f"[INFO] naukri_cookies={len(naukri)}")
 
-if len(naukri) < 3:
-    print('[WARN] storage_state has too few Naukri cookies; it may not authenticate.')
-PY
+                if len(naukri) < 3:
+                    print("[WARN] Too few Naukri cookies. Session may be expired.")
+
+            except Exception as e:
+                print(f"[ERROR] Invalid storage_state.json: {e}")
+                raise
+            EOF
 
           else
-            echo "[INFO] No .auth/storage_state.json to validate; continuing with password login fallback."
+            echo "[INFO] No storage state file found. Continuing..."
           fi
 
       - name: Ensure NLTK resources
@@ -111,10 +119,10 @@ PY
           MODEL_PATH="$MODEL_DIR/model.keras"
 
           if [ ! -f "$MODEL_PATH" ]; then
-            echo "Model not found at $MODEL_PATH — training now"
-            python -m jab --email $JOBAUTO_EMAIL --train
+            echo "[INFO] Model not found. Training now..."
+            python -m jab --email "$JOBAUTO_EMAIL" --train
           else
-            echo "Model exists — skipping training"
+            echo "[INFO] Model exists. Skipping training."
           fi
 
       - name: Verify Naukri login (session reuse)
@@ -123,7 +131,9 @@ PY
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
           JOBAUTO_STORAGE_STATE_PATH: .auth/storage_state.json
         run: |
-          xvfb-run -a python -u -m jab --email "$JOBAUTO_EMAIL" --verify-login
+          xvfb-run -a python -u -m jab \
+            --email "$JOBAUTO_EMAIL" \
+            --verify-login
 
       - name: Run Auto-Job-Applier
         env:
@@ -131,7 +141,10 @@ PY
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
           JOBAUTO_STORAGE_STATE_PATH: .auth/storage_state.json
         run: |
-          xvfb-run -a python -u -m jab --email "$JOBAUTO_EMAIL" --apply --filters
+          xvfb-run -a python -u -m jab \
+            --email "$JOBAUTO_EMAIL" \
+            --apply \
+            --filters
 
       - name: Upload debug screenshots on failure
         if: failure()
