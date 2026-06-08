@@ -73,7 +73,7 @@ jobs:
           if [ -f ".auth/storage_state.json" ]; then
             echo "[INFO] Validating .auth/storage_state.json"
 
-            python3 <<'EOF'
+            python3 - <<'EOF'
             import json
             from pathlib import Path
 
