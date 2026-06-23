@@ -68,19 +68,21 @@ jobs:
         run: |
           if [ -f .auth/storage_state.json ]; then
             echo "[INFO] Validating .auth/storage_state.json"
-            python3 -c "
+            python3 - <<'PY'
             import json
             from pathlib import Path
+
             path = Path('.auth/storage_state.json')
             data = json.loads(path.read_text())
             cookies = data.get('cookies', [])
             origins = data.get('origins', [])
             naukri = [c for c in cookies if 'naukri' in c.get('domain', '')]
             print(f'[INFO] storage_state present: {path}')
-            print(f'[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}')
+            print(f"[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}")
             if len(naukri) < 3:
                 print('[WARN] storage_state has too few Naukri cookies; it may not authenticate.')
-            "
+            PY
+
           else
             echo "[INFO] No .auth/storage_state.json to validate; continuing with password login fallback."
           fi
