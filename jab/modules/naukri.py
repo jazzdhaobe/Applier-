@@ -760,20 +760,50 @@ class NaukriBot:
     def _complete_apply_after_click(self, timeout_ms=40000):
         """Wait for chatbot or success after clicking Apply.
 
-        CI can be slower; use a larger default timeout to reduce false negatives
-        where the apply succeeds but success UI/URL appears slightly later.
+        CI can be slower; use a larger default timeout to reduce false negatives.
+
+        Additionally, confirm success by observing *navigation/state transitions*
+        (URL change / apply-workflow style URLs), since text confirmation is
+        sometimes delayed or not present in DOM quickly.
         """
+
+        # Baseline URL to detect post-click navigation.
+        try:
+            before_urls = set(self._all_page_urls())
+        except Exception:
+            before_urls = set()
 
         deadline = time.time() + (timeout_ms / 1000)
         while time.time() < deadline:
             pages = self._all_pages()
+
+            # If job already shows as applied, we're done.
             if self._job_already_applied():
                 return True
+
+            # Success URL patterns (saveApply / thankyou / apply-workflow etc.)
             try:
                 if self._any_page_matches_success_url():
                     return True
             except Exception:
                 pass
+
+            # Heuristic: URL changed after the click => consider confirmed.
+            try:
+                current_urls = set(self._all_page_urls())
+                if before_urls and (current_urls - before_urls):
+                    return True
+            except Exception:
+                pass
+
+            # Heuristic: page URL contains typical post-apply routes.
+            try:
+                current_any = " ".join(self._all_page_urls()).lower()
+                if any(token in current_any for token in ("saveapply", "thankyou", "apply-workflow", "myapply")):
+                    return True
+            except Exception:
+                pass
+
 
             if self._handle_google_login_prompt():
                 continue
