@@ -68,26 +68,11 @@ jobs:
         run: |
           if [ -f .auth/storage_state.json ]; then
             echo "[INFO] Validating .auth/storage_state.json"
-            python3 - <<'PY'
-            import json
-            from pathlib import Path
-
-            path = Path('.auth/storage_state.json')
-            data = json.loads(path.read_text())
-            cookies = data.get('cookies', [])
-            origins = data.get('origins', [])
-            naukri = [c for c in cookies if 'naukri' in c.get('domain', '')]
-            print(f'[INFO] storage_state present: {path}')
-            print(f"[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}")
-            if len(naukri) < 3:
-                print('[WARN] storage_state has too few Naukri cookies; it may not authenticate.')
-PY
-
-
-
+            python3 -c "import json; from pathlib import Path; p=Path('.auth/storage_state.json'); d=json.loads(p.read_text()); cookies=d.get('cookies',[]); origins=d.get('origins',[]); naukri=[c for c in cookies if 'naukri' in c.get('domain','')]; print(f'[INFO] storage_state present: {p}'); print(f'[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}'); print('[WARN] storage_state has too few Naukri cookies; it may not authenticate.' if len(naukri) < 3 else '')"
           else
             echo "[INFO] No .auth/storage_state.json to validate; continuing with password login fallback."
           fi
+
 
       - name: Ensure NLTK resources
         run: |
