@@ -785,7 +785,10 @@ class NaukriBot:
                 "text=/applied successfully/i",
                 "text=/thank you for applying/i",
                 "button:has-text('Applied')",
+                "text=/Application submitted/i",
+                "text=/Applied/i",
             )
+
             for ctx in pages:
                 for selector in success_selectors:
                     try:
