@@ -88,10 +88,11 @@ jobs:
             print(f"[INFO] naukri_cookies={len(naukri)}")
             if len(naukri) < 3:
                 print('[WARN] Too few Naukri cookies. Session may be expired.')
-            PY
+PY
 
 
           else
+
             echo "[INFO] No storage state file found. Continuing..."
           fi
 

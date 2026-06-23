@@ -81,7 +81,9 @@ jobs:
             print(f"[INFO] cookies={len(cookies)} origins={len(origins)} naukri_cookies={len(naukri)}")
             if len(naukri) < 3:
                 print('[WARN] storage_state has too few Naukri cookies; it may not authenticate.')
-            PY
+PY
+
+
 
           else
             echo "[INFO] No .auth/storage_state.json to validate; continuing with password login fallback."
