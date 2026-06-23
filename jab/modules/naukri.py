@@ -757,8 +757,13 @@ class NaukriBot:
             pass
         return None
 
-    def _complete_apply_after_click(self, timeout_ms=20000):
-        """Wait for chatbot or success after clicking Apply."""
+    def _complete_apply_after_click(self, timeout_ms=40000):
+        """Wait for chatbot or success after clicking Apply.
+
+        CI can be slower; use a larger default timeout to reduce false negatives
+        where the apply succeeds but success UI/URL appears slightly later.
+        """
+
         deadline = time.time() + (timeout_ms / 1000)
         while time.time() < deadline:
             pages = self._all_pages()
