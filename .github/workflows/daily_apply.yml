@@ -20,7 +20,7 @@ jobs:
     env:
       JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
       JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
-      JOBAUTO_NUMBER: "50"
+      JOBAUTO_NUMBER: "30"
       JOBAUTO_EXPERIENCE: "2"
       JOBAUTO_CI: "1"
       PYTHONUNBUFFERED: "1"
