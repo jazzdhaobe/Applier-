@@ -112,8 +112,9 @@ jobs:
 
       - name: Run Auto-Job-Applier
         id: apply_job_run
-        # Same as local: python -m jab --email YOU --apply --filters --password PASS
-        # Password and session come from secrets; xvfb provides a display on Linux.
+        # Use the same flow as local: python -m jab --email YOU --apply
+        # This uses the faster direct apply path without the filter panel overhead.
+        # The code already skips company-site jobs via _find_apply_button().
         env:
           JOBAUTO_EMAIL: ${{ secrets.JOBAUTO_EMAIL }}
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
@@ -121,7 +122,7 @@ jobs:
         run: |
           mkdir -p logs
           set -o pipefail
-          xvfb-run -a python -u -m jab --email "$JOBAUTO_EMAIL" --apply --filters 2>&1 | tee logs/apply_run.log
+          xvfb-run -a python -u -m jab --email "$JOBAUTO_EMAIL" --apply 2>&1 | tee logs/apply_run.log
 
       - name: Publish job application summary
         if: always()
