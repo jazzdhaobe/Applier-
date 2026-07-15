@@ -1092,41 +1092,35 @@ class NaukriBot:
         serch.click()
 
         # Wait for the search filter panel to be visible and ready
-        try:
-            self.page.wait_for_timeout(500)  # Brief pause for UI to open
-        except Exception:
-            pass
+        self.page.wait_for_timeout(2000)  # Longer pause for UI to open and stabilize
 
         # Keyword search (acts like a best-effort relevance ranking; not a strict filter)
         keyword_input = self.page.locator('input[placeholder="Enter keyword / designation / companies"]')
         try:
-            keyword_input.wait_for_element_state('editable', timeout=10000)
-        except Exception:
-            log_info('[WARN] Keyword input not in editable state immediately, attempting with focus()')
+            keyword_input.fill(self.search)
+        except Exception as e:
+            log_info(f'[WARN] Failed to fill keyword input on first try: {e}, retrying with focus()...')
             keyword_input.focus()
             self.page.wait_for_timeout(500)
+            keyword_input.fill(self.search)
         
-        keyword_input.type(self.search, delay=100)
         if self.location:
             location_input = self.page.locator('input[placeholder="Enter location"]')
+            self.page.wait_for_timeout(300)
             try:
-                location_input.wait_for_element_state('editable', timeout=10000)
-            except Exception:
-                location_input.focus()
-                self.page.wait_for_timeout(500)
-            location_input.type(self.location, delay=100)
+                location_input.fill(self.location)
+            except Exception as e:
+                log_info(f'[WARN] Failed to fill location input: {e}')
+        
         if self.experience:
+            self.page.wait_for_timeout(300)
             exp_dropdown = self.page.locator('#experienceDD')
             try:
-                exp_dropdown.wait_for_element_state('visible', timeout=10000)
-            except Exception:
-                pass
-            exp_dropdown.click()
-            self.page.wait_for_timeout(300)
-            self.page.locator(f'li[index="{self.experience}"]').click()
-
-        # Best-effort Easy Apply filter (only if such UI element exists)
-        # This is intentionally tolerant: if selector is not found, continue without failing.
+                exp_dropdown.click()
+                self.page.wait_for_timeout(500)
+                self.page.locator(f'li[index="{self.experience}"]').click()
+            except Exception as e:
+                log_info(f'[WARN] Failed to select experience: {e}')
         try:
             easy_apply_candidates = [
                 'text=/easy apply/i',
