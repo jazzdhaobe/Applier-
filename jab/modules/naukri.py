@@ -185,6 +185,10 @@ class NaukriBot:
         otp=None,
         storage_state_path=None,
         save_storage_state_path=None,
+        search=None,
+        experience=None,
+        location="",
+        job_age="7",
     ):
         self.browser = None
         self.page = None
@@ -201,7 +205,11 @@ class NaukriBot:
         self.otp = otp
         self.storage_state_path = storage_state_path
         self.save_storage_state_path = save_storage_state_path or storage_state_path
-        self.experience_years = "2"
+        self.search = search or ""
+        self.location = location or ""
+        self.experience = experience
+        self.experience_years = str(experience) if experience not in (None, "") else "2"
+        self.jobage = str(job_age) if job_age not in (None, "") else "7"
         self.success_url_patterns = [
             re.compile(r'https://.*/myapply/saveApply\?strJobsarr='),
             re.compile(r'https://.*/myapply/thankyou.*'),
@@ -705,7 +713,7 @@ class NaukriBot:
             f'button:has-text("{self.username}")',
             f'div[role="button"]:has-text("{self.username}")',
             f'span:has-text("{self.username}")',
-            'text=/@gmail\.com/i',
+            r'text=/@gmail\.com/i',
         )
         for ctx in pages:
             for selector in account_selectors:
@@ -909,12 +917,9 @@ class NaukriBot:
         except Exception:
             pass
         self.page.wait_for_timeout(2000)
-        job_links = self.page.eval_on_selector_all(
-            '.title',
-            'elements => elements.map(element => element.getAttribute("href")) .filter(href => href !==null)'
-        )
+        job_links = self._collect_naukri_apply_job_links()
         log_info(
-            f"[INFO] Page {self.page_no}: found {len(job_links)} job links "
+            f"[INFO] Page {self.page_no}: found {len(job_links)} Naukri Apply job links "
             f"(applied {self.applied_count}/{self.applno})"
         )
         # Extra safety: only apply to jobs that look tech/engineering-related.
@@ -1034,7 +1039,7 @@ class NaukriBot:
                 return
             self.apply_()
 
-    def filter_apply(self, s, e='', l='', ja='3'):
+    def filter_apply(self, s, e='', l='', ja='7'):
         self.search = s
         if not self.search:
             log_info("Search keyword required")
@@ -1042,7 +1047,7 @@ class NaukriBot:
         self.experience = e
         self.experience_years = str(e) if e not in (None, "") else "2"
         self.location = l
-        self.jobage = ja
+        self.jobage = str(ja) if ja not in (None, "") else "7"
         log_info(f"[INFO] Starting apply run (target {self.applno} jobs)...")
         self.init_browser()
         try:
@@ -1083,24 +1088,190 @@ class NaukriBot:
         log_info(f"[FINAL] Job application completed. Applied to {self.applied_count} jobs total.")
         return {"response": "applied successfully", "applied": self.applied_count}
 
+    def _wait_for_results_page(self):
+        try:
+            self.page.wait_for_load_state('networkidle', timeout=15000)
+        except Exception:
+            pass
+        try:
+            self.page.locator('.srp-jobtuple-wrapper, .jobTuple, .list-jobtuple, a.title').first.wait_for(
+                state='visible', timeout=15000
+            )
+        except Exception:
+            pass
+        self.page.wait_for_timeout(1000)
+
+    def _submit_search(self):
+        search_selectors = (
+            'button[aria-label="Search jobs here"]',
+            '.nI-gNb-sb__expand',
+            '.nI-gNb-sb__icon-wrapper',
+            'button:has-text("Search")',
+            'button[type="submit"]',
+        )
+        for selector in search_selectors:
+            try:
+                locator = self.page.locator(selector).first
+                if locator.is_visible(timeout=2000):
+                    locator.click(force=True, timeout=5000)
+                    self.page.wait_for_load_state('load', timeout=10000)
+                    self._wait_for_results_page()
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _apply_job_age_url(self):
+        if not self.jobage:
+            return
+        parsed = urlparse(self.page.url)
+        query = parse_qs(parsed.query)
+        query["jobAge"] = [str(self.jobage)]
+        nurl = urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+        if nurl != self.page.url:
+            self.page.goto(nurl)
+            self.page.wait_for_load_state('load')
+            self._wait_for_results_page()
+        log_info(f'[INFO] Job age filter applied: {self.jobage} days')
+
+    def _click_filter_option(self, label_pattern):
+        """Click a filter pill/checkbox on Naukri by visible label text."""
+        regex = re.compile(label_pattern, re.I)
+        locator_strategies = (
+            lambda: self.page.get_by_role("checkbox", name=regex),
+            lambda: self.page.get_by_role("button", name=regex),
+            lambda: self.page.get_by_role("radio", name=regex),
+            lambda: self.page.locator('label').filter(has_text=regex),
+            lambda: self.page.locator(
+                '[class*="filter"], [class*="Filter"], [class*="pill"], [class*="Pill"]'
+            ).filter(has_text=regex),
+            lambda: self.page.locator('span, div, button, a, li').filter(has_text=regex),
+        )
+        for get_locator in locator_strategies:
+            try:
+                locator = get_locator()
+                count = min(locator.count(), 8)
+                for index in range(count):
+                    target = locator.nth(index)
+                    try:
+                        if not target.is_visible(timeout=1200):
+                            continue
+                        target.scroll_into_view_if_needed(timeout=2000)
+                        target.click(force=True, timeout=3000)
+                        self.page.wait_for_timeout(900)
+                        return True
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+        return False
+
+    def _apply_easy_apply_filter(self):
+        """Enable Easy Apply / Apply on Naukri filter on the search results page."""
+        log_info('[INFO] Applying Easy Apply filter (Naukri Apply only, no company site)...')
+        self._wait_for_results_page()
+        easy_apply_patterns = (
+            r"easy apply",
+            r"apply on naukri",
+            r"one[- ]?click apply",
+            r"quick apply",
+            r"apply with one click",
+        )
+        for pattern in easy_apply_patterns:
+            if self._click_filter_option(pattern):
+                log_info(f'[INFO] Easy Apply filter applied via label: /{pattern}/i')
+                self._wait_for_results_page()
+                return True
+        return False
+
+    def _apply_freshness_filter(self, days):
+        """Apply Freshness sidebar filter as a backup to the jobAge URL param."""
+        # Try to expand the Freshness panel first so option labels are visible.
+        self._click_filter_option(r"freshness")
+        self.page.wait_for_timeout(500)
+
+        freshness_patterns = (
+            rf"last {days} days?",
+            rf"past {days} days?",
+            rf"{days} days?",
+            rf"<= {days} days?",
+            rf"last {days}",
+            rf"past {days}",
+        )
+        for pattern in freshness_patterns:
+            if self._click_filter_option(pattern):
+                log_info(f'[INFO] Freshness filter applied: last {days} days')
+                self._wait_for_results_page()
+                return True
+
+        log_info(f'[WARN] Freshness filter option for last {days} days not found on page.')
+        return False
+
+    def _collect_naukri_apply_job_links(self):
+        """Collect job links from SRP, skipping company-site-only listings."""
+        return self.page.evaluate(
+            """() => {
+                const companySiteRe = /apply on company|company site|company website/i;
+                const cardSelectors = [
+                    '.srp-jobtuple-wrapper',
+                    '.cust-job-tuple',
+                    '.jobTuple',
+                    '.list-jobtuple',
+                ];
+                const cards = [];
+                for (const selector of cardSelectors) {
+                    document.querySelectorAll(selector).forEach((el) => cards.push(el));
+                }
+                const links = new Set();
+                for (const card of cards) {
+                    const cardText = (card.innerText || '').replace(/\\s+/g, ' ');
+                    if (companySiteRe.test(cardText)) {
+                        continue;
+                    }
+                    const title = card.querySelector(
+                        'a.title, a.jtitle, .title a, a[href*="job-listings"]'
+                    );
+                    const href = title && title.getAttribute('href');
+                    if (href) {
+                        links.add(href);
+                    }
+                }
+                if (links.size) {
+                    return [...links];
+                }
+                return [...document.querySelectorAll('a.title[href], a.jtitle[href]')]
+                    .map((anchor) => anchor.getAttribute('href'))
+                    .filter(Boolean);
+            }"""
+        )
+
     def filter_(self):
         """Apply search filters including keyword, location, experience, easy apply, and job age."""
-        serch = self.page.locator(".nI-gNb-sb__icon-wrapper")
-        serch.click()
+        self.page.wait_for_timeout(1000)
 
-        # Wait for the search filter panel to be visible and ready
-        self.page.wait_for_timeout(2000)  # Longer pause for UI to open and stabilize
+        try:
+            self.page.locator('.nI-gNb-sb__expand').first.click(force=True, timeout=8000)
+        except Exception:
+            try:
+                self.page.locator('.nI-gNb-sb__icon-wrapper').first.click(force=True, timeout=8000)
+            except Exception as e:
+                log_info(f'[WARN] Could not open Naukri search panel: {e}')
 
-        # Keyword search (acts like a best-effort relevance ranking; not a strict filter)
+        self.page.wait_for_timeout(2000)
+
         keyword_input = self.page.locator('input[placeholder="Enter keyword / designation / companies"]')
         try:
             keyword_input.fill(self.search)
         except Exception as e:
             log_info(f'[WARN] Failed to fill keyword input on first try: {e}, retrying with focus()...')
-            keyword_input.focus()
-            self.page.wait_for_timeout(500)
-            keyword_input.fill(self.search)
-        
+            try:
+                keyword_input.focus()
+                self.page.wait_for_timeout(500)
+                keyword_input.fill(self.search)
+            except Exception as exc:
+                log_info(f'[ERROR] Unable to populate keyword field: {exc}')
+                raise
+
         if self.location:
             location_input = self.page.locator('input[placeholder="Enter location"]')
             self.page.wait_for_timeout(300)
@@ -1108,7 +1279,7 @@ class NaukriBot:
                 location_input.fill(self.location)
             except Exception as e:
                 log_info(f'[WARN] Failed to fill location input: {e}')
-        
+
         if self.experience:
             self.page.wait_for_timeout(300)
             exp_dropdown = self.page.locator('#experienceDD')
@@ -1118,59 +1289,29 @@ class NaukriBot:
                 self.page.locator(f'li[index="{self.experience}"]').click()
             except Exception as e:
                 log_info(f'[WARN] Failed to select experience: {e}')
-        
-        # Apply Easy Apply filter to exclude company site jobs
-        log_info('[INFO] Applying Easy Apply filter to exclude non-easy-apply jobs...')
-        easy_apply_applied = False
-        easy_apply_candidates = [
-            'input[type="checkbox"][name*="easy"]',
-            'input[type="checkbox"][aria-label*="easy"]',
-            'label:has-text("easy apply")',
-            'label:has-text("Easy Apply")',
-            'text=/easy apply/i',
-            'text=/one[- ]?click apply/i',
-            'text=/quick apply/i',
-            'text=/apply with one click/i',
-        ]
-        
-        for sel in easy_apply_candidates:
-            try:
-                loc = self.page.locator(sel)
-                count = loc.count()
-                if count > 0:
-                    # Try to click the first match
-                    first_loc = loc.first
-                    if first_loc.is_visible(timeout=1500):
-                        first_loc.click(force=True)
-                        self.page.wait_for_timeout(500)
-                        log_info(f'[INFO] Easy Apply filter clicked using selector: {sel}')
-                        easy_apply_applied = True
-                        break
-            except Exception as e:
-                log_info(f'[DEBUG] Easy Apply selector "{sel}" failed: {e}')
-                continue
-        
-        if not easy_apply_applied:
-            log_info('[WARN] Easy Apply filter could not be applied; will proceed with all jobs (including company site)')
-        
-        # Click search button to apply filters
-        serch.click()
-        self.page.wait_for_load_state('load')
-        curl = self.page.url
 
-        # Latest jobs only (configurable, default 7 days)
+        # Submit search using the visible search button or fallback to pressing Enter.
+        submitted = self._submit_search()
+        if not submitted:
+            try:
+                keyword_input.press('Enter')
+                self.page.wait_for_load_state('load', timeout=10000)
+                self._wait_for_results_page()
+            except Exception as e:
+                log_info(f'[ERROR] Search submit failed: {e}')
+                raise
+
+        self._apply_job_age_url()
+
+        easy_apply_applied = self._apply_easy_apply_filter()
+        if not easy_apply_applied:
+            log_info(
+                '[WARN] Easy Apply filter could not be applied on results page; '
+                'will skip company-site jobs while processing listings'
+            )
+
         if self.jobage:
-            parsed = urlparse(curl)
-            query = parse_qs(parsed.query)
-            if "jobAge" not in query:
-                query["jobAge"] = [self.jobage]
-                new_query = urlencode(query, doseq=True)
-                nurl = parsed._replace(query=new_query).geturl()
-            else:
-                # If jobAge already exists, just navigate to ensure it is applied.
-                nurl = curl
-            self.page.goto(nurl)
-            log_info(f'[INFO] Job age filter applied: {self.jobage} days')
+            self._apply_freshness_filter(self.jobage)
 
     def start_apply(self, tab):
         self.tabIndex = 0
@@ -1202,10 +1343,18 @@ class NaukriBot:
     def bot_actions(self):
         try:
             time.sleep(2)
-            self.page.click('.nI-gNb-menuItems__anchorDropdown')
-            if not self.tab=="profile":
-                self.page.click(f"#{self.tab}")
-            self.page.wait_for_load_state("networkidle")
+            try:
+                dropdown = self.page.locator('.nI-gNb-menuItems__anchorDropdown').first
+                if dropdown.is_visible(timeout=3000):
+                    dropdown.click()
+                    if self.tab != "profile":
+                        self.page.click(f"#{self.tab}")
+                    self.page.wait_for_load_state("networkidle")
+                else:
+                    log_info("[INFO] Menu dropdown not visible, continuing without tab navigation.")
+            except Exception:
+                log_info("[INFO] Menu dropdown unavailable; continuing directly to apply flow.")
+
             if self.applied_count >= self.applno:
                 print(f"applied {self.applied_count} jobs")
                 return {"response":"applied successfully","applied":self.applied_count}

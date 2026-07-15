@@ -157,6 +157,10 @@ def main():
         otp=config["otp"],
         storage_state_path=config["storage_state_path"],
         save_storage_state_path=config["save_storage_state_path"],
+        search=config["search"],
+        experience=config["experience"],
+        location=config["location"],
+        job_age=config["job_age"],
     )
 
     if args.verify_login:
