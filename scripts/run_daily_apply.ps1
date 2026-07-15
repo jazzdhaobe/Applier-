@@ -48,7 +48,7 @@ Write-Log "Using email: $env:JOBAUTO_EMAIL"
 
 try {
     & $pythonPath -m playwright install chromium 2>&1 | Tee-Object -FilePath $logFile -Append | Out-Null
-    & $pythonPath -m jab --email $env:JOBAUTO_EMAIL --apply --headless 2>&1 | Tee-Object -FilePath $logFile -Append
+    & $pythonPath -m jab --email $env:JOBAUTO_EMAIL --apply --filters --headless 2>&1 | Tee-Object -FilePath $logFile -Append
 
     if ($LASTEXITCODE -ne 0) {
         throw "python -m jab failed with exit code $LASTEXITCODE"
