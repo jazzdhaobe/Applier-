@@ -1084,10 +1084,7 @@ class NaukriBot:
         return {"response": "applied successfully", "applied": self.applied_count}
 
     def filter_(self):
-        serch = self.page.locator(".nI-gNb-sb__icon-wrapper")
-        serch.click()
-
-    def filter_(self):
+        """Apply search filters including keyword, location, experience, easy apply, and job age."""
         serch = self.page.locator(".nI-gNb-sb__icon-wrapper")
         serch.click()
 
@@ -1121,27 +1118,47 @@ class NaukriBot:
                 self.page.locator(f'li[index="{self.experience}"]').click()
             except Exception as e:
                 log_info(f'[WARN] Failed to select experience: {e}')
-        try:
-            easy_apply_candidates = [
-                'text=/easy apply/i',
-                'text=/one[- ]?click apply/i',
-                'text=/quick apply/i',
-                'text=/apply with one click/i',
-            ]
-            for sel in easy_apply_candidates:
+        
+        # Apply Easy Apply filter to exclude company site jobs
+        log_info('[INFO] Applying Easy Apply filter to exclude non-easy-apply jobs...')
+        easy_apply_applied = False
+        easy_apply_candidates = [
+            'input[type="checkbox"][name*="easy"]',
+            'input[type="checkbox"][aria-label*="easy"]',
+            'label:has-text("easy apply")',
+            'label:has-text("Easy Apply")',
+            'text=/easy apply/i',
+            'text=/one[- ]?click apply/i',
+            'text=/quick apply/i',
+            'text=/apply with one click/i',
+        ]
+        
+        for sel in easy_apply_candidates:
+            try:
                 loc = self.page.locator(sel)
-                if loc.first.is_visible(timeout=1500):
-                    loc.first.click(force=True)
-                    log_info('[INFO] Easy Apply filter selected (best-effort)')
-                    break
-        except Exception:
-            log_info('[WARN] Easy Apply filter not found; continuing without it')
-
+                count = loc.count()
+                if count > 0:
+                    # Try to click the first match
+                    first_loc = loc.first
+                    if first_loc.is_visible(timeout=1500):
+                        first_loc.click(force=True)
+                        self.page.wait_for_timeout(500)
+                        log_info(f'[INFO] Easy Apply filter clicked using selector: {sel}')
+                        easy_apply_applied = True
+                        break
+            except Exception as e:
+                log_info(f'[DEBUG] Easy Apply selector "{sel}" failed: {e}')
+                continue
+        
+        if not easy_apply_applied:
+            log_info('[WARN] Easy Apply filter could not be applied; will proceed with all jobs (including company site)')
+        
+        # Click search button to apply filters
         serch.click()
         self.page.wait_for_load_state('load')
         curl = self.page.url
 
-        # Latest jobs only (last 7 days)
+        # Latest jobs only (configurable, default 7 days)
         if self.jobage:
             parsed = urlparse(curl)
             query = parse_qs(parsed.query)
@@ -1153,6 +1170,7 @@ class NaukriBot:
                 # If jobAge already exists, just navigate to ensure it is applied.
                 nurl = curl
             self.page.goto(nurl)
+            log_info(f'[INFO] Job age filter applied: {self.jobage} days')
 
     def start_apply(self, tab):
         self.tabIndex = 0
