@@ -111,6 +111,7 @@ jobs:
           xvfb-run -a python -u -m jab --email $JOBAUTO_EMAIL --verify-login
 
       - name: Run Auto-Job-Applier
+        id: apply_job_run
         # Same as local: python -m jab --email YOU --apply --filters --password PASS
         # Password and session come from secrets; xvfb provides a display on Linux.
         env:
@@ -118,7 +119,54 @@ jobs:
           JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
           JOBAUTO_STORAGE_STATE_PATH: .auth/storage_state.json
         run: |
-          xvfb-run -a python -u -m jab --email "$JOBAUTO_EMAIL" --apply --filters
+          mkdir -p logs
+          set -o pipefail
+          xvfb-run -a python -u -m jab --email "$JOBAUTO_EMAIL" --apply --filters 2>&1 | tee logs/apply_run.log
+
+      - name: Publish job application summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          log_path = Path("logs/apply_run.log")
+          summary_lines = ["## Job application summary", ""]
+
+          if log_path.exists():
+              text = log_path.read_text(encoding="utf-8", errors="ignore")
+              title_matches = re.findall(r"✅ Applied to \d+/\d+ jobs\. Title='([^']*)'", text)
+              final_count_match = re.search(r"✅ Successfully applied to (\d+) jobs!", text)
+              final_count_total_match = re.search(r"\[FINAL\] Job application completed\. Applied to (\d+) jobs total\.", text)
+
+              count = 0
+              if final_count_match:
+                  count = int(final_count_match.group(1))
+              elif final_count_total_match:
+                  count = int(final_count_total_match.group(1))
+
+              if title_matches:
+                  summary_lines.append(f"- Applied jobs: {len(title_matches)}")
+                  if count:
+                      summary_lines.append(f"- Final count reported: {count}")
+                  summary_lines.append("- Titles:")
+                  for title in title_matches:
+                      cleaned = title.strip()
+                      if cleaned:
+                          summary_lines.append(f"  - {cleaned}")
+              else:
+                  summary_lines.append(f"- Applied jobs: {count if count else 0}")
+                  summary_lines.append("- Titles: none captured")
+          else:
+              summary_lines.append("- No application log was generated.")
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              Path(summary_path).write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+          else:
+              print("\n".join(summary_lines))
+          PY
 
       - name: Upload debug screenshots on failure
         if: failure()
