@@ -1,4 +1,5 @@
 import os
+
 import time
 import re
 from pathlib import Path
@@ -892,6 +893,32 @@ class NaukriBot:
             f"[INFO] Page {self.page_no}: found {len(job_links)} job links "
             f"(applied {self.applied_count}/{self.applno})"
         )
+        # Extra safety: only apply to jobs that look tech/engineering-related.
+        # (Even if the search box contains tech keywords, Naukri results can include non-tech roles.)
+        tech_keywords = (
+            "software", "engineer", "developer", "backend", "frontend", "full stack",
+            "data", "machine learning", "ml", "ai", "artificial intelligence",
+            "automation", "devops", "cloud", "kubernetes", "react", "node",
+            "python", "java", "c++", "golang", "spring", "django", "flask",
+        )
+
+        def is_likely_tech_job(job_url: str) -> bool:
+            try:
+                title = ""
+                try:
+                    # Title text is usually available on the job card; attempt best-effort.
+                    title = self.page.locator(f'a[href="{job_url}"]').first.inner_text(timeout=1500)
+                except Exception:
+                    pass
+                haystack = f"{title} {job_url}".lower()
+                return any(k in haystack for k in tech_keywords)
+            except Exception:
+                return True  # fail open to avoid skipping everything on DOM changes
+
+        job_links = [jl for jl in job_links if is_likely_tech_job(jl)]
+
+        applied_job_titles = []
+
         for job_index, jl in enumerate(job_links, start=1):
             if self.applied_count >= self.applno:
                 log_info(f"\n✅ Successfully applied to {self.applied_count} jobs!")
@@ -954,7 +981,14 @@ class NaukriBot:
 
                 if self._complete_apply_after_click(timeout_ms=chatbot_timeout):
                     self.applied_count += 1
-                    log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs.")
+                    try:
+                        job_title = self.page.locator('h1,h2,h3,.jd-header-title,.title').first.inner_text(timeout=1500)
+                    except Exception:
+                        job_title = ''
+                    if not job_title:
+                        job_title = str(job_index)
+                    applied_job_titles.append(job_title.strip())
+                    log_info(f"✅ Applied to {self.applied_count}/{self.applno} jobs. Title='{job_title.strip()[:80]}'")
                 else:
                     log_info(f"[SKIP] Job {job_index}: Apply not confirmed")
             except Exception as e:
@@ -1019,30 +1053,96 @@ class NaukriBot:
 
     def filter_(self):
         serch = self.page.locator(".nI-gNb-sb__icon-wrapper")
-        serch.click() 
-        self.page.locator('input[placeholder="Enter keyword / designation / companies"]').type(self.search,delay=100)
+        serch.click()
+
+        log_info(
+            f"[INFO] Typing search filters: search='{getattr(self, 'search', '')}', "
+            f"experience='{getattr(self, 'experience', '')}', "
+            f"location='{getattr(self, 'location', '')}', "
+            f"job_age='{getattr(self, 'jobage', '')}'"
+        )
+
+        # Keyword search (acts like a best-effort relevance ranking; not a strict filter)
+        self.page.locator('input[placeholder="Enter keyword / designation / companies"]').type(
+            self.search, delay=100
+        )
         if self.location:
-            self.page.locator('input[placeholder="Enter location"]').type(self.location,delay=100)
+            self.page.locator('input[placeholder="Enter location"]').type(self.location, delay=100)
         if self.experience:
             self.page.locator('#experienceDD').click()
             self.page.locator(f'li[index="{self.experience}"]').click()
+
+    def filter_(self):
+        serch = self.page.locator(".nI-gNb-sb__icon-wrapper")
+        serch.click()
+
+        # Keyword search (acts like a best-effort relevance ranking; not a strict filter)
+        self.page.locator('input[placeholder="Enter keyword / designation / companies"]').type(
+            self.search, delay=100
+        )
+        if self.location:
+            self.page.locator('input[placeholder="Enter location"]').type(self.location, delay=100)
+        if self.experience:
+            self.page.locator('#experienceDD').click()
+            self.page.locator(f'li[index="{self.experience}"]').click()
+
+        # Best-effort Easy Apply filter (only if such UI element exists)
+        # This is intentionally tolerant: if selector is not found, continue without failing.
+        try:
+            easy_apply_candidates = [
+                'text=/easy apply/i',
+                'text=/one[- ]?click apply/i',
+                'text=/quick apply/i',
+                'text=/apply with one click/i',
+            ]
+            for sel in easy_apply_candidates:
+                loc = self.page.locator(sel)
+                if loc.first.is_visible(timeout=1500):
+                    loc.first.click(force=True)
+                    log_info('[INFO] Easy Apply filter selected (best-effort)')
+                    break
+        except Exception:
+            log_info('[WARN] Easy Apply filter not found; continuing without it')
+
         serch.click()
         self.page.wait_for_load_state('load')
-        curl = self.page.url 
+        curl = self.page.url
+
+        # Latest jobs only (last 7 days)
         if self.jobage:
-            nurl = curl+f"&jobAge={self.jobage}"
+            if "jobAge=" not in curl:
+                nurl = curl + f"&jobAge={self.jobage}"
+            else:
+                # If jobAge already exists, just navigate to ensure it is applied.
+                nurl = curl
             self.page.goto(nurl)
 
-    def start_apply(self,tab):
+    def start_apply(self, tab):
         self.tabIndex = 0
         self.tab = tab
         self.init_browser()
         try:
             if self.login():
+                # Always search + apply filters before applying (even for the
+                # bulk/checkbox flow). This prevents “direct apply” without
+                # keyword search.
+                try:
+                    log_info("[INFO] Running pre-apply search + filters (start_apply flow)...")
+                    self.filter_()
+                    try:
+                        self.page.wait_for_load_state('networkidle', timeout=20000)
+                    except Exception:
+                        pass
+                    self.base_page_url = self.page.url
+                    log_info(f"[INFO] Search complete. Base URL: {self.base_page_url}")
+                except Exception as exc:
+                    log_info(f"[WARN] Pre-apply filter/search step failed: {exc}")
+
                 botactions = self.bot_actions()
                 return botactions
         finally:
             self.close()
+
         
     def bot_actions(self):
         try:
@@ -1056,10 +1156,18 @@ class NaukriBot:
                 return {"response":"applied successfully","applied":self.applied_count}
             else:
                 cbapl = self.checkbox_apply()
+
+            # Logging to help verify whether bulk apply actually started.
+            log_info(
+                f"[INFO] Bulk apply result: status={cbapl.get('status')}, "
+                f"clicked={cbapl.get('clicked')}, found={cbapl.get('found')}"
+            )
+
             if cbapl["status"] == 'failed':
                 print(f"finished daily quota with {self.applied_count} jobs")
                 self.close()
                 return {"response":"quota finished","applied":self.applied_count}
+
             elif cbapl["status"] == 'quota_exceeded':
                 print("[INFO] Naukri reported that the daily quota has been exceeded.")
                 self.close()

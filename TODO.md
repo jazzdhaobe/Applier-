@@ -1,10 +1,10 @@
-# TODO: Push to https://github.com/JayeshDhobe/Auto-Job-Applier.git - FINAL STEP
+## TODO - Ensure search-before-apply + improve verification
 
-## Steps:
-1. ✅ Update .gitignore to ignore user data dirs.
-2. ✅ Change git remote origin to correct repo.
-3. ✅ git add .
-4. ✅ git commit 672ab51
-5. ⏳ Merge: git commit (accept message), then git push origin main
-6. [ ] Verify: https://github.com/JayeshDhobe/Auto-Job-Applier.git/commits/main
-7. [ ] rm TODO.md
+- [ ] Fix `start_apply()` / `bot_actions()` so it always performs keyword search + filters after login (use existing config: self.search/self.experience_years/self.location/self.jobage).
+- [ ] Add logging of: keyword/search/location/experience + landing URL after search, and for each applied job the job URL/title (or screenshot + URL) so we can confirm actions happened.
+
+- [ ] Add strong logging: current search results URL, keyword used, and list of applied job URLs/titles.
+- [ ] Add a “proof of apply” counter increment only after confirmation (tighten `_complete_apply_after_click`).
+- [ ] Update workflow/scheduler command if needed so it passes correct flags.
+- [ ] Test locally with a dry run + short apply run; validate logs.
+

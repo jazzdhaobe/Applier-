@@ -7,9 +7,14 @@ from .modules.model import ChatbotBuild
 from .modules.naukri import NaukriBot
 
 DEFAULT_SEARCH = (
+    # Priority order matters because Naukri keyword search is not a strict filter.
+    # Keep AI roles first, then general Software/Full-stack/Backend, then Frontend.
     "Gen Ai, Agentic AI, AI Developer, AI Ml Engineer, AI Engineer, "
-    "Software Engineer, Full stack developer, AI full stack developer, "
-    "Backend Engineer, NodeJS backend Engineer"
+    "Artificial Intelligence, Agentic AI, "
+    "Software Engineer, Backend Engineer, "
+    "Full stack developer, AI full stack developer, "
+    "NodeJS backend Engineer, "
+    "Frontend developer, Front End Engineer"
 )
 
 

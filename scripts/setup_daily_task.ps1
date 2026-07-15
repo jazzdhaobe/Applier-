@@ -54,12 +54,19 @@ if ($experience) { setx JOBAUTO_EXPERIENCE $experience | Out-Null }
 if ($jobAge) { setx JOBAUTO_JOBAGE $jobAge | Out-Null }
 
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$runScript`""
-$trigger = New-ScheduledTaskTrigger -Daily -At 9am
+# Create 5 daily triggers (IST): 07:00, 09:00, 12:00, 15:00, 17:00
+$trigger1 = New-ScheduledTaskTrigger -Daily -At 7am
+$trigger2 = New-ScheduledTaskTrigger -Daily -At 9am
+$trigger3 = New-ScheduledTaskTrigger -Daily -At 12pm
+$trigger4 = New-ScheduledTaskTrigger -Daily -At 3pm
+$trigger5 = New-ScheduledTaskTrigger -Daily -At 5pm
+$triggers = @($trigger1, $trigger2, $trigger3, $trigger4, $trigger5)
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RunOnlyIfNetworkAvailable -StartWhenAvailable
 
 # Register the scheduled task for the current user (avoids requiring elevated privileges)
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggers -Settings $settings -Force | Out-Null
+
 
 Write-Host "Daily task created successfully."
 Write-Host "The task will run every day at 9:00 AM for this user."

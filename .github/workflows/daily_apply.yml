@@ -5,8 +5,17 @@ permissions:
 
 on:
   schedule:
-    # Runs at 09:00 IST (03:30 UTC) daily — adjust cron if you need a different timezone
-    - cron: '30 2 * * *'
+    # Runs at IST times (GitHub cron uses UTC): IST = UTC + 5:30
+    # 07:00 IST => 01:30 UTC
+    - cron: '30 1 * * *'
+    # 09:00 IST => 03:30 UTC
+    - cron: '30 3 * * *'
+    # 12:00 IST => 06:30 UTC
+    - cron: '30 6 * * *'
+    # 15:00 IST => 09:30 UTC
+    - cron: '30 9 * * *'
+    # 17:00 IST => 11:30 UTC
+    - cron: '30 11 * * *'
   workflow_dispatch:
     inputs:
       confirm:
@@ -22,6 +31,7 @@ jobs:
       JOBAUTO_PASSWORD: ${{ secrets.JOBAUTO_PASSWORD }}
       JOBAUTO_NUMBER: "30"
       JOBAUTO_EXPERIENCE: "2"
+      JOBAUTO_JOBAGE: "7"
       JOBAUTO_CI: "1"
       PYTHONUNBUFFERED: "1"
       TF_CPP_MIN_LOG_LEVEL: "2"
