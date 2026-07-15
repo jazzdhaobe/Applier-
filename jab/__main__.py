@@ -144,7 +144,7 @@ def main():
         print(json.dumps(config, indent=2, sort_keys=True))
         return
 
-    if not args.apply:
+    if not args.apply and not args.verify_login:
         print("Use --apply to start applying or --train to train the model")
         return
 
