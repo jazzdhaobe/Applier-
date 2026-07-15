@@ -398,6 +398,30 @@ class NaukriBot:
         except Exception:
             return False
 
+    def _is_login_redirect(self):
+        try:
+            url = self.page.url.lower()
+            if "nlogin/login" in url or "login?url" in url:
+                return True
+            login_selectors = (
+                '#usernameField',
+                'input[placeholder="Enter Email ID / Username"]',
+                'input[placeholder="Enter your active Email ID / Username"]',
+                'input[placeholder="Enter Password"]',
+                'input[placeholder="Enter your password"]',
+                'text=/Login/i',
+                'text=/Sign in/i',
+            )
+            for selector in login_selectors:
+                try:
+                    if self.page.locator(selector).first.is_visible(timeout=1000):
+                        return True
+                except Exception:
+                    continue
+            return False
+        except Exception:
+            return False
+
     def _restore_existing_session(self):
         if not self.has_valid_storage_state():
             return False
@@ -1034,6 +1058,14 @@ class NaukriBot:
                 pass
             self.base_page_url = self.page.url
             self.page_no = 1
+            if self._is_login_redirect():
+                log_info(f"[ERROR] Search results page was redirected to login: {self.base_page_url}")
+                try:
+                    body_excerpt = self.page.locator('body').inner_text()[:500]
+                    log_info(f"[DEBUG] Page body excerpt: {body_excerpt}")
+                except Exception:
+                    pass
+                return {"response": "session invalid", "applied": 0}
             if not self._ensure_authenticated_session():
                 log_info(f"[ERROR] Saved session is not authenticated after applying filters; aborting apply run. Current URL: {self.page.url}")
                 try:
