@@ -1087,35 +1087,42 @@ class NaukriBot:
         serch = self.page.locator(".nI-gNb-sb__icon-wrapper")
         serch.click()
 
-        log_info(
-            f"[INFO] Typing search filters: search='{getattr(self, 'search', '')}', "
-            f"experience='{getattr(self, 'experience', '')}', "
-            f"location='{getattr(self, 'location', '')}', "
-            f"job_age='{getattr(self, 'jobage', '')}'"
-        )
-
-        # Keyword search (acts like a best-effort relevance ranking; not a strict filter)
-        self.page.locator('input[placeholder="Enter keyword / designation / companies"]').type(
-            self.search, delay=100
-        )
-        if self.location:
-            self.page.locator('input[placeholder="Enter location"]').type(self.location, delay=100)
-        if self.experience:
-            self.page.locator('#experienceDD').click()
-            self.page.locator(f'li[index="{self.experience}"]').click()
-
     def filter_(self):
         serch = self.page.locator(".nI-gNb-sb__icon-wrapper")
         serch.click()
 
+        # Wait for the search filter panel to be visible and ready
+        try:
+            self.page.wait_for_timeout(500)  # Brief pause for UI to open
+        except Exception:
+            pass
+
         # Keyword search (acts like a best-effort relevance ranking; not a strict filter)
-        self.page.locator('input[placeholder="Enter keyword / designation / companies"]').type(
-            self.search, delay=100
-        )
+        keyword_input = self.page.locator('input[placeholder="Enter keyword / designation / companies"]')
+        try:
+            keyword_input.wait_for_element_state('editable', timeout=10000)
+        except Exception:
+            log_info('[WARN] Keyword input not in editable state immediately, attempting with focus()')
+            keyword_input.focus()
+            self.page.wait_for_timeout(500)
+        
+        keyword_input.type(self.search, delay=100)
         if self.location:
-            self.page.locator('input[placeholder="Enter location"]').type(self.location, delay=100)
+            location_input = self.page.locator('input[placeholder="Enter location"]')
+            try:
+                location_input.wait_for_element_state('editable', timeout=10000)
+            except Exception:
+                location_input.focus()
+                self.page.wait_for_timeout(500)
+            location_input.type(self.location, delay=100)
         if self.experience:
-            self.page.locator('#experienceDD').click()
+            exp_dropdown = self.page.locator('#experienceDD')
+            try:
+                exp_dropdown.wait_for_element_state('visible', timeout=10000)
+            except Exception:
+                pass
+            exp_dropdown.click()
+            self.page.wait_for_timeout(300)
             self.page.locator(f'li[index="{self.experience}"]').click()
 
         # Best-effort Easy Apply filter (only if such UI element exists)
