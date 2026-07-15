@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import nltk
 import json
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 from playwright.sync_api import sync_playwright , expect
 import tensorflow as tf
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -1110,8 +1110,12 @@ class NaukriBot:
 
         # Latest jobs only (last 7 days)
         if self.jobage:
-            if "jobAge=" not in curl:
-                nurl = curl + f"&jobAge={self.jobage}"
+            parsed = urlparse(curl)
+            query = parse_qs(parsed.query)
+            if "jobAge" not in query:
+                query["jobAge"] = [self.jobage]
+                new_query = urlencode(query, doseq=True)
+                nurl = parsed._replace(query=new_query).geturl()
             else:
                 # If jobAge already exists, just navigate to ensure it is applied.
                 nurl = curl
