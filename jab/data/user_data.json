@@ -81,5 +81,8 @@
     },
     "Date of birth": "30/05/2002",
     "Gender": "Male",
-    "Preferred work location": "Pune, Nagpur, Mumbai"
+    "Preferred work location": "Pune, Nagpur, Mumbai",
+    "Blocked companies": [
+        "Accenture"
+    ]
 }
