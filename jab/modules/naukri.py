@@ -890,6 +890,22 @@ class NaukriBot:
             except Exception:
                 pass
 
+            # NEW: Check if application form/modal is visible (iframe or modal)
+            try:
+                form_selectors = [
+                    "iframe[src*='apply']",
+                    ".apply-modal",
+                    ".application-form",
+                    "[role='dialog']",
+                    ".nI-modal"
+                ]
+                for selector in form_selectors:
+                    if self.page.locator(selector).first.is_visible(timeout=500):
+                        log_info(f"[DEBUG] Application form/modal detected: {selector}")
+                        self.page.wait_for_timeout(1000)
+                        continue
+            except Exception:
+                pass
 
             if self._handle_google_login_prompt():
                 continue
