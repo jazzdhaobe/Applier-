@@ -215,8 +215,61 @@ class NaukriBot:
             re.compile(r'https://.*/myapply/thankyou.*'),
             re.compile(r'https://.*/apply-workflow.*'),
         ]
+        self.blocked_companies = self._load_blocked_companies()
 
-    def _chatbot_contexts(self):
+    def _load_blocked_companies(self):
+        """Load the list of blocked companies from user_data.json."""
+        try:
+            with open("./jab/data/user_data.json", "r") as file:
+                user_data = json.load(file)
+                blocked = user_data.get("Blocked companies", [])
+                if blocked:
+                    log_info(f"[INFO] Loaded {len(blocked)} blocked companies: {', '.join(blocked)}")
+                return [company.lower().strip() for company in blocked]
+        except Exception as e:
+            log_info(f"[WARN] Could not load blocked companies: {e}")
+            return []
+
+    def _is_company_blocked(self, company_name):
+        """Check if a company is in the blocked list."""
+        if not company_name or not self.blocked_companies:
+            return False
+        company_lower = company_name.lower().strip()
+        return any(blocked in company_lower for blocked in self.blocked_companies)
+
+    def _get_company_name(self):
+        """Extract company name from the current job page."""
+        try:
+            # Try multiple selectors for company name
+            selectors = [
+                '.jd-header-comp-name',
+                '[class*="company"]',
+                '.company-name',
+                'span:has-text("Company:")',
+            ]
+            
+            for selector in selectors:
+                try:
+                    elements = self.page.locator(selector).all()
+                    for el in elements:
+                        text = el.inner_text(timeout=500)
+                        if text and len(text.strip()) > 1:
+                            return text.strip()
+                except Exception:
+                    continue
+            
+            # Fallback: try to find company name in the page text
+            page_text = self.page.content()
+            if 'Company:' in page_text:
+                match = re.search(r'Company:\s*([^<\n]+)', page_text)
+                if match:
+                    return match.group(1).strip()
+            
+            return None
+        except Exception:
+            return None
+
+
         contexts = [self.page]
         for frame in self.page.frames:
             if frame != self.page.main_frame:
@@ -837,6 +890,22 @@ class NaukriBot:
             except Exception:
                 pass
 
+            # NEW: Check if application form/modal is visible (iframe or modal)
+            try:
+                form_selectors = [
+                    "iframe[src*='apply']",
+                    ".apply-modal",
+                    ".application-form",
+                    "[role='dialog']",
+                    ".nI-modal"
+                ]
+                for selector in form_selectors:
+                    if self.page.locator(selector).first.is_visible(timeout=500):
+                        log_info(f"[DEBUG] Application form/modal detected: {selector}")
+                        self.page.wait_for_timeout(1000)
+                        continue
+            except Exception:
+                pass
 
             if self._handle_google_login_prompt():
                 continue
@@ -965,6 +1034,11 @@ class NaukriBot:
 
                 if self._job_already_applied():
                     log_info(f"[SKIP] Job {job_index}: already applied")
+                    continue
+
+                company_name = self._get_company_name()
+                if self._is_company_blocked(company_name):
+                    log_info(f"[SKIP] Job {job_index}: company '{company_name}' is blocked")
                     continue
 
                 if self._handle_google_login_prompt():
