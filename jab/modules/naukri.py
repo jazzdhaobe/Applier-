@@ -1359,40 +1359,10 @@ class NaukriBot:
                 print(f"applied {self.applied_count} jobs")
                 return {"response":"applied successfully","applied":self.applied_count}
             else:
-                cbapl = self.checkbox_apply()
-
-            # Logging to help verify whether bulk apply actually started.
-            log_info(
-                f"[INFO] Bulk apply result: status={cbapl.get('status')}, "
-                f"clicked={cbapl.get('clicked')}, found={cbapl.get('found')}"
-            )
-
-            if cbapl["status"] == 'failed':
-                print(f"finished daily quota with {self.applied_count} jobs")
-                self.close()
-                return {"response":"quota finished","applied":self.applied_count}
-
-            elif cbapl["status"] == 'quota_exceeded':
-                print("[INFO] Naukri reported that the daily quota has been exceeded.")
-                self.close()
-                return {"response":"quota exceeded","applied":self.applied_count}
-            elif cbapl["status"] == 'done':
-                self.applied_count += cbapl["clicked"]
-                self.bot_actions()
-            elif cbapl["status"] == 'underway':
-                self.cba.classify_new_question()
-                try:
-                    expect(self.page).to_have_url(self.pattern)
-                    self.applied_count += cbapl["clicked"]
-                    self.bot_actions()
-                except Exception as e:
-                    print("An error occured answering naukri questions :===>",e)
-                    self.close()
-                    return {"response":"error on botactions","error":str(e)}
-            elif cbapl['status'] == "finished":
-                self.tabIndex += 1
-                self.tab = self.tabs[self.tabIndex]
-                self.bot_actions()
+                # Skip bulk apply (checkbox flow) and use per-job apply loop (1-by-1).
+                log_info("[INFO] Skipping bulk apply and using per-job apply loop (1-by-1).")
+                self.apply_()
+                return {"response":"applied successfully","applied":self.applied_count}
         except Exception as e:
             self.close()
             print(f"applied {self.applied_count} jobs but an error occured :===>{str(e)}")
