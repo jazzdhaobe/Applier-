@@ -291,6 +291,9 @@ class NaukriBot:
                     contexts.append(frame)
         return contexts
 
+    def _chatbot_contexts(self):
+        return self._search_contexts()
+
     def _any_page_matches_success_url(self):
         for page in self._all_pages():
             for pattern in self.success_url_patterns:
@@ -890,22 +893,22 @@ class NaukriBot:
             except Exception:
                 pass
 
-            # NEW: Check if application form/modal is visible (iframe or modal)
-            try:
-                form_selectors = [
-                    "iframe[src*='apply']",
-                    ".apply-modal",
-                    ".application-form",
-                    "[role='dialog']",
-                    ".nI-modal"
-                ]
+            # Naukri may render the application form in a modal or iframe.
+            form_selectors = (
+                "iframe[src*='apply']",
+                ".apply-modal",
+                ".application-form",
+                "[role='dialog']",
+                ".nI-modal",
+            )
+            for ctx in self._search_contexts():
                 for selector in form_selectors:
-                    if self.page.locator(selector).first.is_visible(timeout=500):
-                        log_info(f"[DEBUG] Application form/modal detected: {selector}")
-                        self.page.wait_for_timeout(1000)
+                    try:
+                        if ctx.locator(selector).first.is_visible(timeout=300):
+                            log_info(f"[DEBUG] Application form/modal detected: {selector}")
+                            break
+                    except Exception:
                         continue
-            except Exception:
-                pass
 
             if self._handle_google_login_prompt():
                 continue
@@ -929,35 +932,19 @@ class NaukriBot:
                     except Exception:
                         continue
 
-            chatbot = self.page.locator(".chatbot_MessageContainer")
-            try:
-                if chatbot.is_visible(timeout=500):
-                    self._answer_chatbot_heuristic()
+            if self._answer_chatbot_if_visible():
+                if self._job_already_applied():
+                    return True
+                chatbot_still_visible = False
+                for ctx in self._search_contexts():
                     try:
-                        self.cba.classify_new_question()
-                    except Exception as exc:
-                        log_info(f"[WARN] Chatbot model step: {exc}")
-                    if self._job_already_applied():
-                        return True
-                    if not chatbot.is_visible(timeout=1000):
-                        return True
-            except Exception:
-                pass
-
-            chatbot = self.page.locator(".chatbot_MessageContainer")
-            try:
-                if chatbot.is_visible(timeout=500):
-                    self._answer_chatbot_heuristic()
-                    try:
-                        self.cba.classify_new_question()
-                    except Exception as exc:
-                        log_info(f"[WARN] Chatbot model step: {exc}")
-                    if self._job_already_applied():
-                        return True
-                    if not chatbot.is_visible(timeout=1000):
-                        return True
-            except Exception:
-                pass
+                        if ctx.locator(".chatbot_MessageContainer").is_visible(timeout=300):
+                            chatbot_still_visible = True
+                            break
+                    except Exception:
+                        continue
+                if not chatbot_still_visible:
+                    return True
 
             self.page.wait_for_timeout(500)
 
