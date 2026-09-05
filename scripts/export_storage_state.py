@@ -20,6 +20,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO_ROOT / ".auth" / "storage_state.json"
 
 
+def compact_storage_state(path: Path) -> tuple[int, int]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    cookies = [
+        cookie
+        for cookie in data.get("cookies", [])
+        if cookie.get("domain", "").lstrip(".").endswith("naukri.com")
+    ]
+    compacted = {"cookies": cookies, "origins": []}
+    path.write_text(json.dumps(compacted, separators=(",", ":")), encoding="utf-8")
+    return len(cookies), len(compacted["origins"])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Export Naukri session for CI")
     parser.add_argument("--email", required=True)
@@ -57,9 +69,7 @@ def main() -> int:
     finally:
         bot.close()
 
-    data = json.loads(output.read_text(encoding="utf-8"))
-    cookies = len(data.get("cookies", []))
-    origins = len(data.get("origins", []))
+    cookies, origins = compact_storage_state(output)
     size = output.stat().st_size
     print(f"[OK] Wrote {output} ({size} bytes, cookies={cookies}, origins={origins})")
     print()
