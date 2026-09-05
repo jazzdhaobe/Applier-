@@ -69,4 +69,4 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggers -S
 
 
 Write-Host "Daily task created successfully."
-Write-Host "The task will run every day at 9:00 AM for this user."
+Write-Host "The task will run daily at 7:00 AM, 9:00 AM, 12:00 PM, 3:00 PM, and 5:00 PM for this user."
