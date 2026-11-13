@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import nltk
 import json
-from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+from urllib.parse import urljoin, urlparse, urlunparse, parse_qs, urlencode
 from playwright.sync_api import sync_playwright , expect
 import tensorflow as tf
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -199,6 +199,7 @@ class NaukriBot:
         self.applno = number
         self.applied_count = 0
         self.page_no = 1
+        self._navigation_recovery_attempted = False
         self.tabs = ["profile", "apply", "preference", "similar_jobs"]
         self.pattern = re.compile(r'https://.*/myapply/saveApply\?strJobsarr=')
         self.headless = headless
@@ -1012,7 +1013,7 @@ class NaukriBot:
                 log_info(f"[INFO] Processing job {job_index}/{len(job_links)} on page {self.page_no}...")
             try:
                 self.page.wait_for_timeout(1000)
-                self.page.goto(jl, timeout=30000)
+                self.page.goto(urljoin(self.page.url, jl), timeout=30000)
                 try:
                     self.page.wait_for_load_state('load', timeout=10000)
                 except Exception:
@@ -1083,6 +1084,13 @@ class NaukriBot:
                     log_info(f"[SKIP] Job {job_index}: Apply not confirmed")
             except Exception as e:
                 log_info(f"[SKIP] Job {job_index}: error ({e})")
+                if "cannot navigate to invalid url" in str(e).lower():
+                    if self._restart_search_after_invalid_job_url():
+                        log_info("[INFO] Restarting job application from refreshed search results.")
+                        self.apply_()
+                    else:
+                        log_info("[ERROR] Could not restart the search after an invalid job URL.")
+                    return
                 continue
 
         if self.applied_count < self.applno:
@@ -1099,6 +1107,29 @@ class NaukriBot:
                 log_info(f"\n✅ Successfully applied to {self.applied_count} jobs!")
                 return
             self.apply_()
+
+    def _restart_search_after_invalid_job_url(self):
+        if self._navigation_recovery_attempted:
+            log_info("[ERROR] Invalid job URL occurred again after the search restart.")
+            return False
+
+        self._navigation_recovery_attempted = True
+        log_info("[WARN] Invalid job URL; returning to Naukri home and rerunning the search.")
+        try:
+            self.page.goto("https://www.naukri.com/mnjuser/homepage", timeout=40000)
+            self.page.wait_for_load_state("domcontentloaded", timeout=15000)
+            if not self._ensure_authenticated_session():
+                log_info("[ERROR] Session is not authenticated after returning to Naukri home.")
+                return False
+
+            self.filter_()
+            self.base_page_url = self.page.url
+            self.page_no = 1
+            log_info(f"[INFO] Search results refreshed: {self.base_page_url}")
+            return True
+        except Exception as e:
+            log_info(f"[ERROR] Failed to refresh Naukri search after invalid job URL: {e}")
+            return False
 
     def filter_apply(self, s, e='', l='', ja='7'):
         self.search = s
