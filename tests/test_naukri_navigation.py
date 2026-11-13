@@ -98,6 +98,22 @@ class TargetJobTitleTest(unittest.TestCase):
             "Generative AI Developer",
             "Machine Learning Researcher",
             "AI Full-Stack Engineer",
+            "LangGraph Agent Engineer",
+            "MCP Tool-Calling Developer",
+            "Semantic Kernel Engineer",
+            "DSPy Developer",
+            "vLLM Inference Engineer",
+            "QLoRA Fine-Tuning Engineer",
+            "DeepEval AI Engineer",
+            "GPU Inference Engineer",
+            "Kubernetes GPU Inference Engineer",
+            "Ray AI Engineer",
+            "GraphRAG Developer",
+            "Whisper Speech-to-Text Engineer",
+            "NeMo Guardrails Developer",
+            "Vision-Language Model Researcher",
+            "Transformers Engineer",
+            "n8n Agentic Workflows Engineer",
         )
 
         for title in accepted_titles:
@@ -107,6 +123,10 @@ class TargetJobTitleTest(unittest.TestCase):
     def test_rejects_non_ai_general_development_and_unwanted_roles(self):
         rejected_titles = (
             "Python Software Developer",
+            "Kubernetes Platform Engineer",
+            "Ray Infrastructure Engineer",
+            "Electrical Transformers Engineer",
+            "Search Engineer",
             ".NET Developer",
             "Dot Net Developer with trading experience",
             "Full Stack .NET Developer",

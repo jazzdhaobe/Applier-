@@ -14,7 +14,15 @@ DEFAULT_SEARCH = (
     "Software Engineer, Backend Engineer, "
     "Full stack developer, AI full stack developer, "
     "NodeJS backend Engineer, "
-    "Frontend developer, Front End Engineer"
+    "Frontend developer, Front End Engineer, "
+    "LangGraph, CrewAI, AutoGen, Semantic Kernel, MCP, A2A, "
+    "tool calling, function calling, DSPy, Haystack, LangSmith, "
+    "vLLM, Ollama, TensorRT-LLM, LoRA, QLoRA, PEFT, RLHF, DPO, "
+    "RAGAS, DeepEval, TruLens, LLM-as-a-Judge, Ray, Kubernetes, "
+    "GPU inference, Knowledge Graph RAG, GraphRAG, Hybrid Search, "
+    "Whisper, Text-to-Speech, Speech-to-Text, Guardrails, "
+    "NeMo Guardrails, LLM Security, Transformers, Diffusion Models, "
+    "Vision-Language Models, n8n, agentic workflows"
 )
 
 

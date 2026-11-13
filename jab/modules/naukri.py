@@ -33,6 +33,7 @@ def is_target_job_title(title: str) -> bool:
         r"\bc\s*#",
         r"\bautocad\b",
         r"\bjava\s+full[\s-]*stack\b",
+        r"\belectrical\b",
         r"\bconsultant\b",
         r"\bpartnerships?\b",
         r"\bstrateg(y|ic)\b",
@@ -50,7 +51,14 @@ def is_target_job_title(title: str) -> bool:
 
     ai_focus = re.search(
         r"\b(ai|a\.i\.|ml|m\.l\.|machine learning|artificial intelligence|"
-        r"generative ai|gen ai|agentic ai|llm|large language model)\b",
+        r"generative ai|gen ai|agentic ai|llm|large language model|"
+        r"langgraph|crewai|autogen|semantic kernel|mcp|a2a|tool calling|"
+        r"function calling|dspy|haystack|langsmith|vllm|ollama|tensorrt llm|"
+        r"lora|qlora|peft|rlhf|dpo|ragas|deepeval|trulens|llm as a judge|"
+        r"gpu inference|knowledge graph rag|graphrag|rag|"
+        r"hybrid search|whisper|text to speech|speech to text|guardrails|"
+        r"nemo guardrails|llm security|transformers?|transformer models|"
+        r"diffusion models|vision language models?|n8n|agentic workflows)\b",
         normalized,
     )
     full_stack_focus = re.search(r"\bfull[\s-]*stack\b", normalized)
