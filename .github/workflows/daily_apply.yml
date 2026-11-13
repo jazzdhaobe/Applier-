@@ -179,15 +179,12 @@ jobs:
               print("\n".join(summary_lines))
           PY
 
-      - name: Send WhatsApp job application summary
+      - name: Send Telegram job application summary
         if: always()
         env:
-          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-          TWILIO_WHATSAPP_CONTENT_SID: ${{ secrets.TWILIO_WHATSAPP_CONTENT_SID }}
-          WHATSAPP_FROM: ${{ secrets.WHATSAPP_FROM }}
-          WHATSAPP_TO: ${{ secrets.WHATSAPP_TO }}
-        run: python scripts/send_whatsapp_summary.py
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/send_telegram_summary.py
 
       - name: Upload debug screenshots on failure
         if: failure()
