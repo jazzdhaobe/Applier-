@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from jab.modules.naukri import NaukriBot
+from jab.modules.naukri import NaukriBot, is_target_job_title
 
 
 class NaukriNavigationTest(unittest.TestCase):
@@ -17,12 +17,17 @@ class NaukriNavigationTest(unittest.TestCase):
         with patch.object(
             bot,
             "_collect_naukri_apply_job_links",
-            return_value=["/job-listings-data-scientist-hero-fincorp"],
+            return_value=[
+                {
+                    "href": "/job-listings-machine-learning-engineer",
+                    "title": "Machine Learning Engineer",
+                }
+            ],
         ), patch.object(bot, "_job_already_applied", return_value=True):
             bot.apply_()
 
         bot.page.goto.assert_called_once_with(
-            "https://www.naukri.com/job-listings-data-scientist-hero-fincorp",
+            "https://www.naukri.com/job-listings-machine-learning-engineer",
             timeout=30000,
         )
 
@@ -64,7 +69,12 @@ class NaukriNavigationTest(unittest.TestCase):
             bot,
             "_collect_naukri_apply_job_links",
             side_effect=[
-                ["/job-listings-data-scientist-hero-fincorp"],
+                [
+                    {
+                        "href": "/job-listings-ai-engineer",
+                        "title": "AI Engineer",
+                    }
+                ],
                 [],
             ],
         ), patch.object(
@@ -76,9 +86,39 @@ class NaukriNavigationTest(unittest.TestCase):
 
         restart.assert_called_once_with()
         bot.page.goto.assert_called_once_with(
-            "https://www.naukri.com/job-listings-data-scientist-hero-fincorp",
+            "https://www.naukri.com/job-listings-ai-engineer",
             timeout=30000,
         )
+
+
+class TargetJobTitleTest(unittest.TestCase):
+    def test_accepts_ai_and_full_stack_development_roles(self):
+        accepted_titles = (
+            "Senior AI Engineer",
+            "Generative AI Developer",
+            "Machine Learning Researcher",
+            "AI Full-Stack Engineer",
+        )
+
+        for title in accepted_titles:
+            with self.subTest(title=title):
+                self.assertTrue(is_target_job_title(title))
+
+    def test_rejects_non_ai_general_development_and_unwanted_roles(self):
+        rejected_titles = (
+            "Python Software Developer",
+            ".NET Developer",
+            "Dot Net Developer with trading experience",
+            "Full Stack .NET Developer",
+            "Java Full Stack Developer",
+            "Developer Role For Autocad, Demo 3D - C#, VB and DOT NET",
+            "Consultant - Partnerships & Strategy (Contractual)",
+            "",
+        )
+
+        for title in rejected_titles:
+            with self.subTest(title=title):
+                self.assertFalse(is_target_job_title(title))
 
 
 if __name__ == "__main__":

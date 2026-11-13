@@ -22,6 +22,41 @@ def log_info(message: str) -> None:
     print(message, flush=True)
 
 
+def is_target_job_title(title: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9+#.]+", " ", title.lower()).strip()
+    if not normalized:
+        return False
+
+    excluded_terms = (
+        r"\.net\b",
+        r"\bdot\s*net\b",
+        r"\bc\s*#",
+        r"\bautocad\b",
+        r"\bjava\s+full[\s-]*stack\b",
+        r"\bconsultant\b",
+        r"\bpartnerships?\b",
+        r"\bstrateg(y|ic)\b",
+        r"\bcontractual\b",
+    )
+    if any(re.search(term, normalized) for term in excluded_terms):
+        return False
+
+    development_role = re.search(
+        r"\b(developer|development|engineer|engineering|programmer|architect|scientist|researcher)\b",
+        normalized,
+    )
+    if not development_role:
+        return False
+
+    ai_focus = re.search(
+        r"\b(ai|a\.i\.|ml|m\.l\.|machine learning|artificial intelligence|"
+        r"generative ai|gen ai|agentic ai|llm|large language model)\b",
+        normalized,
+    )
+    full_stack_focus = re.search(r"\bfull[\s-]*stack\b", normalized)
+    return bool(ai_focus or full_stack_focus)
+
+
 class ChatbotModel():
     def __init__(self, user_data):
         self.lemmatizer = WordNetLemmatizer()
@@ -979,33 +1014,20 @@ class NaukriBot:
             f"[INFO] Page {self.page_no}: found {len(job_links)} Naukri Apply job links "
             f"(applied {self.applied_count}/{self.applno})"
         )
-        # Extra safety: only apply to jobs that look tech/engineering-related.
-        # (Even if the search box contains tech keywords, Naukri results can include non-tech roles.)
-        tech_keywords = (
-            "software", "engineer", "developer", "backend", "frontend", "full stack",
-            "data", "machine learning", "ml", "ai", "artificial intelligence",
-            "automation", "devops", "cloud", "kubernetes", "react", "node",
-            "python", "java", "c++", "golang", "spring", "django", "flask",
-        )
-
-        def is_likely_tech_job(job_url: str) -> bool:
-            try:
-                title = ""
-                try:
-                    # Title text is usually available on the job card; attempt best-effort.
-                    title = self.page.locator(f'a[href="{job_url}"]').first.inner_text(timeout=1500)
-                except Exception:
-                    pass
-                haystack = f"{title} {job_url}".lower()
-                return any(k in haystack for k in tech_keywords)
-            except Exception:
-                return True  # fail open to avoid skipping everything on DOM changes
-
-        job_links = [jl for jl in job_links if is_likely_tech_job(jl)]
+        eligible_jobs = []
+        for job in job_links:
+            title = job.get("title", "").strip()
+            if is_target_job_title(title):
+                eligible_jobs.append(job)
+            else:
+                displayed_title = title or "(title unavailable)"
+                log_info(f"[SKIP] Excluded job title: '{displayed_title[:100]}'")
+        job_links = eligible_jobs
 
         applied_job_titles = []
 
-        for job_index, jl in enumerate(job_links, start=1):
+        for job_index, job in enumerate(job_links, start=1):
+            jl = job["href"]
             if self.applied_count >= self.applno:
                 log_info(f"\n✅ Successfully applied to {self.applied_count} jobs!")
                 break
@@ -1300,7 +1322,7 @@ class NaukriBot:
         return False
 
     def _collect_naukri_apply_job_links(self):
-        """Collect job links from SRP, skipping company-site-only listings."""
+        """Collect job links and visible titles, skipping company-site-only listings."""
         return self.page.evaluate(
             """() => {
                 const companySiteRe = /apply on company|company site|company website/i;
@@ -1314,7 +1336,7 @@ class NaukriBot:
                 for (const selector of cardSelectors) {
                     document.querySelectorAll(selector).forEach((el) => cards.push(el));
                 }
-                const links = new Set();
+                const links = new Map();
                 for (const card of cards) {
                     const cardText = (card.innerText || '').replace(/\\s+/g, ' ');
                     if (companySiteRe.test(cardText)) {
@@ -1325,15 +1347,19 @@ class NaukriBot:
                     );
                     const href = title && title.getAttribute('href');
                     if (href) {
-                        links.add(href);
+                        const jobTitle = title.innerText || title.getAttribute('title') || '';
+                        links.set(href, jobTitle.trim());
                     }
                 }
                 if (links.size) {
-                    return [...links];
+                    return [...links.entries()].map(([href, title]) => ({href, title}));
                 }
                 return [...document.querySelectorAll('a.title[href], a.jtitle[href]')]
-                    .map((anchor) => anchor.getAttribute('href'))
-                    .filter(Boolean);
+                    .map((anchor) => ({
+                        href: anchor.getAttribute('href'),
+                        title: (anchor.innerText || anchor.getAttribute('title') || '').trim()
+                    }))
+                    .filter((job) => job.href);
             }"""
         )
 
