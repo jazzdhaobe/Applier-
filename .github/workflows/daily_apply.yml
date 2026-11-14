@@ -3,29 +3,50 @@ permissions:
   contents: read
   actions: read
 
+
 on:
   schedule:
-    # Runs 20 times per day at 72-minute intervals (UTC)
+    # Runs 40 times per day at 36-minute intervals (UTC)
     - cron: '0 0 * * *'
+    - cron: '36 0 * * *'
     - cron: '12 1 * * *'
+    - cron: '48 1 * * *'
     - cron: '24 2 * * *'
+    - cron: '0 3 * * *'
     - cron: '36 3 * * *'
+    - cron: '12 4 * * *'
     - cron: '48 4 * * *'
+    - cron: '24 5 * * *'
     - cron: '0 6 * * *'
+    - cron: '36 6 * * *'
     - cron: '12 7 * * *'
+    - cron: '48 7 * * *'
     - cron: '24 8 * * *'
+    - cron: '0 9 * * *'
     - cron: '36 9 * * *'
+    - cron: '12 10 * * *'
     - cron: '48 10 * * *'
+    - cron: '24 11 * * *'
     - cron: '0 12 * * *'
+    - cron: '36 12 * * *'
     - cron: '12 13 * * *'
+    - cron: '48 13 * * *'
     - cron: '24 14 * * *'
+    - cron: '0 15 * * *'
     - cron: '36 15 * * *'
+    - cron: '12 16 * * *'
     - cron: '48 16 * * *'
+    - cron: '24 17 * * *'
     - cron: '0 18 * * *'
+    - cron: '36 18 * * *'
     - cron: '12 19 * * *'
+    - cron: '48 19 * * *'
     - cron: '24 20 * * *'
+    - cron: '0 21 * * *'
     - cron: '36 21 * * *'
+    - cron: '12 22 * * *'
     - cron: '48 22 * * *'
+    - cron: '24 23 * * *'
   workflow_dispatch:
     inputs:
       confirm:
