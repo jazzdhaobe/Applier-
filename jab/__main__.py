@@ -7,22 +7,14 @@ from .modules.model import ChatbotBuild
 from .modules.naukri import NaukriBot
 
 DEFAULT_SEARCH = (
-    # Priority order matters because Naukri keyword search is not a strict filter.
-    # Keep AI roles first, then general Software/Full-stack/Backend, then Frontend.
-    "Gen Ai, Agentic AI, AI Developer, AI Ml Engineer, AI Engineer, "
-    "Artificial Intelligence, Agentic AI, "
-    "Software Engineer, Backend Engineer, "
-    "Full stack developer, AI full stack developer, "
-    "NodeJS backend Engineer, "
-    "Frontend developer, Front End Engineer, "
+    "Gen AI, Agentic AI, AI Developer, AI ML Engineer, AI Engineer, "
+    "Senior AI Engineer, Senior AI Developer, Senior Gen AI Engineer, "
+    "Artificial Intelligence, Software Engineer, Senior Software Engineer, "
+    "Backend Engineer, Senior Backend Engineer, Full Stack Developer, "
+    "Senior Full Stack Developer, AI Full Stack Developer, NodeJS Backend Engineer, "
+    "Frontend Developer, Front End Engineer, Senior Frontend Engineer, "
     "LangGraph, CrewAI, AutoGen, Semantic Kernel, MCP, A2A, "
-    "tool calling, function calling, DSPy, Haystack, LangSmith, "
-    "vLLM, Ollama, TensorRT-LLM, LoRA, QLoRA, PEFT, RLHF, DPO, "
-    "RAGAS, DeepEval, TruLens, LLM-as-a-Judge, Ray, Kubernetes, "
-    "GPU inference, Knowledge Graph RAG, GraphRAG, Hybrid Search, "
-    "Whisper, Text-to-Speech, Speech-to-Text, Guardrails, "
-    "NeMo Guardrails, LLM Security, Transformers, Diffusion Models, "
-    "Vision-Language Models, n8n, agentic workflows"
+    "LLM Engineer, AI Platform Engineer, Generative AI Engineer"
 )
 
 
