@@ -114,6 +114,37 @@ class NaukriNavigationTest(unittest.TestCase):
         self.assertEqual(bot.filter_.call_count, 2)
         bot.bot_actions.assert_called_once()
 
+    def test_finds_generic_apply_cta_when_standard_selectors_are_missing(self):
+        bot = object.__new__(NaukriBot)
+        bot.page = MagicMock()
+
+        generic_apply = MagicMock()
+        generic_apply.is_visible.return_value = True
+        generic_apply.inner_text.return_value = "Apply Now"
+        generic_apply.get_attribute.side_effect = lambda name: None
+
+        def make_locator(selector):
+            locator = MagicMock()
+            locator.first = MagicMock()
+            locator.first.is_visible.return_value = False
+            locator.first.inner_text.return_value = ""
+            locator.first.get_attribute.return_value = None
+            locator.count.return_value = 0
+            if selector == "button, a, div, span":
+                locator.count.return_value = 1
+                locator.nth.return_value = generic_apply
+                locator.filter.return_value = locator
+            return locator
+
+        bot.page.locator.side_effect = make_locator
+        bot.page.get_by_role.side_effect = lambda *args, **kwargs: MagicMock()
+        bot.page.frames = []
+
+        result = bot._find_apply_button()
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result, generic_apply)
+
 
 class TargetJobTitleTest(unittest.TestCase):
     def test_accepts_ai_and_full_stack_development_roles(self):

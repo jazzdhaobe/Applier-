@@ -838,6 +838,10 @@ class NaukriBot:
             '[data-test-id="applyBtn"]',
             "button.apply-button-label",
             ".styles_JDC__apply-button button",
+            "button[data-automation='applyBtn']",
+            "button[data-analytics-link='apply']",
+            "button[data-test-id='apply']",
+            "a[data-test-id='applyBtn']",
         )
         for selector in primary:
             try:
@@ -859,6 +863,10 @@ class NaukriBot:
             'a:has-text("Apply Now")',
             'button[data-test-id="applyBtn"]',
             'button[data-automation="applyBtn"]',
+            'button:has-text("Quick Apply")',
+            'a:has-text("Quick Apply")',
+            'button:has-text("Apply on Naukri")',
+            'button:has-text("Apply on naukri")',
         )
         for selector in extra_selectors:
             try:
@@ -868,7 +876,31 @@ class NaukriBot:
                 text = " ".join(btn.inner_text().split()).lower()
                 if "company site" in text or text in ("applied", "already applied"):
                     continue
-                return btn
+                if re.search(r"\bapply\b", text):
+                    return btn
+            except Exception:
+                continue
+
+        generic_selectors = (
+            "button, a, div, span",
+        )
+        for selector in generic_selectors:
+            try:
+                candidates = self.page.locator(selector)
+                count = min(candidates.count(), 60)
+                for idx in range(count):
+                    btn = candidates.nth(idx)
+                    try:
+                        if not btn.is_visible(timeout=400):
+                            continue
+                    except Exception:
+                        continue
+                    text = " ".join((btn.inner_text() or "").split()).lower()
+                    href = (btn.get_attribute("href") or "").lower()
+                    if "company site" in text or text in ("applied", "already applied"):
+                        continue
+                    if re.search(r"\bapply\b", text) or "apply" in href:
+                        return btn
             except Exception:
                 continue
 
@@ -1481,7 +1513,11 @@ class NaukriBot:
                         if self._is_login_redirect():
                             log_info(f"[ERROR] Search results page was redirected to login: {self.base_page_url}")
                             return None
-                        if self._has_job_result_cards():
+                        found_job_cards = self._has_job_result_cards()
+                        log_info(
+                            f"[INFO] Search URL: {self.base_page_url} | job cards detected: {found_job_cards}"
+                        )
+                        if found_job_cards:
                             log_info(f"[INFO] Search complete. Base URL: {self.base_page_url}")
                             break
                         search_attempts += 1
