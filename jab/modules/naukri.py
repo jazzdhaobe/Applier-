@@ -884,6 +884,14 @@ class NaukriBot:
         generic_selectors = (
             "button, a, div, span",
         )
+        generic_apply_patterns = (
+            r"^apply$",
+            r"^apply now$",
+            r"^quick apply$",
+            r"^apply on naukri$",
+            r"^apply on company site$",
+            r"^apply with company site$",
+        )
         for selector in generic_selectors:
             try:
                 candidates = self.page.locator(selector)
@@ -897,9 +905,15 @@ class NaukriBot:
                         continue
                     text = " ".join((btn.inner_text() or "").split()).lower()
                     href = (btn.get_attribute("href") or "").lower()
+                    if not text and not href:
+                        continue
                     if "company site" in text or text in ("applied", "already applied"):
                         continue
-                    if re.search(r"\bapply\b", text) or "apply" in href:
+                    if len(text) > 120:
+                        continue
+                    if any(re.fullmatch(pattern, text) for pattern in generic_apply_patterns):
+                        return btn
+                    if not text and "apply" in href:
                         return btn
             except Exception:
                 continue

@@ -123,6 +123,14 @@ class NaukriNavigationTest(unittest.TestCase):
         generic_apply.inner_text.return_value = "Apply Now"
         generic_apply.get_attribute.side_effect = lambda name: None
 
+        huge_container = MagicMock()
+        huge_container.is_visible.return_value = True
+        huge_container.inner_text.return_value = (
+            "Jobs 1 Companies Services 1 Search jobs here 2 Oracle AI Developer Senior "
+            "Apply on the go ... This job description contains apply multiple times"
+        )
+        huge_container.get_attribute.side_effect = lambda name: None
+
         def make_locator(selector):
             locator = MagicMock()
             locator.first = MagicMock()
@@ -131,8 +139,8 @@ class NaukriNavigationTest(unittest.TestCase):
             locator.first.get_attribute.return_value = None
             locator.count.return_value = 0
             if selector == "button, a, div, span":
-                locator.count.return_value = 1
-                locator.nth.return_value = generic_apply
+                locator.count.return_value = 2
+                locator.nth.side_effect = [huge_container, generic_apply]
                 locator.filter.return_value = locator
             return locator
 
