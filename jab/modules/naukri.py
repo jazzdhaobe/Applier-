@@ -1210,6 +1210,26 @@ class NaukriBot:
         log_info(f"[FINAL] Job application completed. Applied to {self.applied_count} jobs total.")
         return {"response": "applied successfully", "applied": self.applied_count}
 
+    def _has_job_result_cards(self):
+        try:
+            selectors = (
+                '.srp-jobtuple-wrapper',
+                '.cust-job-tuple',
+                '.jobTuple',
+                '.list-jobtuple',
+                'a.title[href]',
+                'a.jtitle[href]',
+            )
+            for selector in selectors:
+                try:
+                    if self.page.locator(selector).count() > 0:
+                        return True
+                except Exception:
+                    continue
+            return False
+        except Exception:
+            return False
+
     def _wait_for_results_page(self):
         try:
             self.page.wait_for_load_state('networkidle', timeout=15000)
@@ -1450,15 +1470,38 @@ class NaukriBot:
                 # keyword search.
                 try:
                     log_info("[INFO] Running pre-apply search + filters (start_apply flow)...")
-                    self.filter_()
-                    try:
-                        self.page.wait_for_load_state('networkidle', timeout=20000)
-                    except Exception:
-                        pass
-                    self.base_page_url = self.page.url
-                    log_info(f"[INFO] Search complete. Base URL: {self.base_page_url}")
+                    search_attempts = 0
+                    while search_attempts < 2:
+                        self.filter_()
+                        try:
+                            self.page.wait_for_load_state('networkidle', timeout=20000)
+                        except Exception:
+                            pass
+                        self.base_page_url = self.page.url
+                        if self._is_login_redirect():
+                            log_info(f"[ERROR] Search results page was redirected to login: {self.base_page_url}")
+                            return None
+                        if self._has_job_result_cards():
+                            log_info(f"[INFO] Search complete. Base URL: {self.base_page_url}")
+                            break
+                        search_attempts += 1
+                        log_info(
+                            f"[WARN] Search/filter did not land on a valid jobs results page (attempt {search_attempts}/2). Retrying once."
+                        )
+                        if search_attempts >= 2:
+                            log_info("[ERROR] Search/filter still failed to yield job results; skipping apply loop to avoid silent no-op.")
+                            return None
+                        try:
+                            self.page.goto("https://www.naukri.com/mnjuser/homepage", timeout=40000)
+                            self.page.wait_for_load_state('domcontentloaded', timeout=15000)
+                        except Exception:
+                            pass
+                        if not self._ensure_authenticated_session():
+                            log_info("[ERROR] Session is not authenticated after retrying the search; aborting apply run.")
+                            return None
                 except Exception as exc:
                     log_info(f"[WARN] Pre-apply filter/search step failed: {exc}")
+                    return None
 
                 botactions = self.bot_actions()
                 return botactions

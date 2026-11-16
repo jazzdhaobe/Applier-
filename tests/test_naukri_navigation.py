@@ -90,6 +90,30 @@ class NaukriNavigationTest(unittest.TestCase):
             timeout=30000,
         )
 
+    def test_start_apply_retries_filter_when_results_page_is_missing(self):
+        bot = object.__new__(NaukriBot)
+        bot.page = MagicMock()
+        bot.page.url = "https://www.naukri.com/mnjuser/homepage"
+        bot.page.wait_for_load_state = MagicMock()
+        bot.page.locator = MagicMock()
+        bot.page.frames = []
+        bot.context = MagicMock()
+        bot.context.pages = []
+        bot.init_browser = MagicMock()
+        bot.login = MagicMock(return_value=True)
+        bot.filter_ = MagicMock(side_effect=[None, None])
+        bot.bot_actions = MagicMock(return_value={"response": "applied successfully", "applied": 1})
+        bot.close = MagicMock()
+        bot._is_login_redirect = MagicMock(return_value=False)
+        bot._ensure_authenticated_session = MagicMock(return_value=True)
+        bot._has_job_result_cards = MagicMock(side_effect=[False, True])
+        bot._navigation_recovery_attempted = False
+
+        bot.start_apply("apply")
+
+        self.assertEqual(bot.filter_.call_count, 2)
+        bot.bot_actions.assert_called_once()
+
 
 class TargetJobTitleTest(unittest.TestCase):
     def test_accepts_ai_and_full_stack_development_roles(self):
