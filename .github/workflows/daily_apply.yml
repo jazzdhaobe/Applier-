@@ -6,8 +6,8 @@ permissions:
 
 on:
   schedule:
-    # Runs 48 times per day at 30-minute intervals (UTC)
-    - cron: '*/30 * * * *'
+    # Runs 96 times per day at 15-minute intervals (UTC)
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       confirm:
