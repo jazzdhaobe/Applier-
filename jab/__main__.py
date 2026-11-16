@@ -7,14 +7,9 @@ from .modules.model import ChatbotBuild
 from .modules.naukri import NaukriBot
 
 DEFAULT_SEARCH = (
-    "Gen AI, Agentic AI, AI Developer, AI ML Engineer, AI Engineer, "
-    "Senior AI Engineer, Senior AI Developer, Senior Gen AI Engineer, "
-    "Artificial Intelligence, Software Engineer, Senior Software Engineer, "
-    "Backend Engineer, Senior Backend Engineer, Full Stack Developer, "
-    "Senior Full Stack Developer, AI Full Stack Developer, NodeJS Backend Engineer, "
-    "Frontend Developer, Front End Engineer, Senior Frontend Engineer, "
-    "LangGraph, CrewAI, AutoGen, Semantic Kernel, MCP, A2A, "
-    "LLM Engineer, AI Platform Engineer, Generative AI Engineer"
+    "Senior AI Engineer, AI Engineer, Senior Software Engineer, Software Engineer, "
+    "AI Full Stack Developer, Senior Full Stack Developer, Full Stack Developer, "
+    "Senior Backend Engineer, Backend Engineer, Senior Frontend Engineer, Frontend Developer"
 )
 
 
@@ -79,7 +74,7 @@ def resolve_config(args):
         "number": parse_optional_int(args.number, parse_optional_int(get_env("JOBAUTO_NUMBER"), 50)),
         "search": args.search or get_env("JOBAUTO_SEARCH") or DEFAULT_SEARCH,
         "experience": parse_optional_int(
-            args.experience, parse_optional_int(get_env("JOBAUTO_EXPERIENCE"), 2)
+            args.experience, parse_optional_int(get_env("JOBAUTO_EXPERIENCE"), 3)
         ),
         "location": args.location or get_env("JOBAUTO_LOCATION") or "",
         "job_age": parse_optional_int(

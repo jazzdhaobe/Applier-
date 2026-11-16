@@ -252,7 +252,7 @@ class NaukriBot:
         self.search = search or ""
         self.location = location or ""
         self.experience = experience
-        self.experience_years = str(experience) if experience not in (None, "") else "2"
+        self.experience_years = str(experience) if experience not in (None, "") else "3"
         self.jobage = str(job_age) if job_age not in (None, "") else "7"
         self.success_url_patterns = [
             re.compile(r'https://.*/myapply/saveApply\?strJobsarr='),
@@ -1213,7 +1213,7 @@ class NaukriBot:
             log_info("Search keyword required")
             return {"response": "search required", "applied": 0}
         self.experience = e
-        self.experience_years = str(e) if e not in (None, "") else "2"
+        self.experience_years = str(e) if e not in (None, "") else "3"
         self.location = l
         self.jobage = str(ja) if ja not in (None, "") else "7"
         log_info(f"[INFO] Starting apply run (target {self.applno} jobs)...")
