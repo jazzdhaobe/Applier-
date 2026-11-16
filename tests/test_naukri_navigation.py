@@ -114,6 +114,40 @@ class NaukriNavigationTest(unittest.TestCase):
         self.assertEqual(bot.filter_.call_count, 2)
         bot.bot_actions.assert_called_once()
 
+    def test_start_apply_advances_to_next_keyword_when_search_has_no_cards(self):
+        bot = object.__new__(NaukriBot)
+        bot.page = MagicMock()
+        bot.page.url = "https://www.naukri.com/mnjuser/homepage"
+        bot.page.wait_for_load_state = MagicMock()
+        bot.page.locator = MagicMock()
+        bot.page.frames = []
+        bot.context = MagicMock()
+        bot.context.pages = []
+        bot.init_browser = MagicMock()
+        bot.login = MagicMock(return_value=True)
+        bot.search_queries = ["Senior AI Engineer", "Software Engineer"]
+        bot.search_query_index = 0
+        bot.search = bot.search_queries[0]
+        bot.page_no = 1
+        bot.filter_ = MagicMock()
+        bot.bot_actions = MagicMock(return_value={"response": "applied successfully", "applied": 1})
+        bot.close = MagicMock()
+        bot._is_login_redirect = MagicMock(return_value=False)
+        bot._ensure_authenticated_session = MagicMock(return_value=True)
+        bot._has_job_result_cards = MagicMock(side_effect=[False, True])
+        bot._navigation_recovery_attempted = False
+
+        bot.start_apply("apply")
+
+        self.assertEqual(bot.search, "Software Engineer")
+        self.assertEqual(bot.search_query_index, 1)
+        bot.page.goto.assert_called_once_with(
+            "https://www.naukri.com/mnjuser/homepage",
+            timeout=40000,
+        )
+        self.assertEqual(bot.filter_.call_count, 2)
+        bot.bot_actions.assert_called_once()
+
     def test_finds_generic_apply_cta_when_standard_selectors_are_missing(self):
         bot = object.__new__(NaukriBot)
         bot.page = MagicMock()

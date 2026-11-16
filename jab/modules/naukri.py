@@ -251,7 +251,7 @@ class NaukriBot:
         self.otp = otp
         self.storage_state_path = storage_state_path
         self.save_storage_state_path = save_storage_state_path or storage_state_path
-        self.search = search or ""
+        self._set_search_queries(search or "")
         self.location = location or ""
         self.experience = experience
         self.experience_years = str(experience) if experience not in (None, "") else "3"
@@ -262,6 +262,29 @@ class NaukriBot:
             re.compile(r'https://.*/apply-workflow.*'),
         ]
         self.blocked_companies = self._load_blocked_companies()
+
+    def _set_search_queries(self, search):
+        self.search_queries = [query.strip() for query in search.split(",") if query.strip()]
+        self.search_query_index = 0
+        self.search = self.search_queries[0] if self.search_queries else ""
+
+    def _advance_search_query(self):
+        queries = getattr(self, "search_queries", [])
+        next_index = getattr(self, "search_query_index", 0) + 1
+        if next_index >= len(queries):
+            return False
+
+        self.search_query_index = next_index
+        self.search = queries[next_index]
+        self.page_no = 1
+        log_info(f"[INFO] Trying next focused job search ({next_index + 1}/{len(queries)}): {self.search}")
+        try:
+            self.page.goto("https://www.naukri.com/mnjuser/homepage", timeout=40000)
+            self.page.wait_for_load_state("domcontentloaded", timeout=15000)
+        except Exception as exc:
+            log_info(f"[WARN] Could not return to Naukri home before next search: {exc}")
+            return False
+        return self._ensure_authenticated_session()
 
     def _load_blocked_companies(self):
         """Load the list of blocked companies from user_data.json."""
@@ -1172,6 +1195,14 @@ class NaukriBot:
                 continue
 
         if self.applied_count < self.applno:
+            if self._advance_search_query():
+                try:
+                    self.filter_()
+                    self.base_page_url = self.page.url
+                    self.apply_()
+                except Exception as exc:
+                    log_info(f"[WARN] Failed to run next focused job search: {exc}")
+                return
             if self.page_no >= 15:
                 log_info("[WARN] Reached page 15 without hitting target apply count.")
                 return
@@ -1210,7 +1241,7 @@ class NaukriBot:
             return False
 
     def filter_apply(self, s, e='', l='', ja='7'):
-        self.search = s
+        self._set_search_queries(s)
         if not self.search:
             log_info("Search keyword required")
             return {"response": "search required", "applied": 0}
@@ -1519,7 +1550,8 @@ class NaukriBot:
                 try:
                     log_info("[INFO] Running pre-apply search + filters (start_apply flow)...")
                     search_attempts = 0
-                    while search_attempts < 2:
+                    max_search_attempts = max(2, len(getattr(self, "search_queries", [])))
+                    while search_attempts < max_search_attempts:
                         self.filter_()
                         try:
                             self.page.wait_for_load_state('networkidle', timeout=20000)
@@ -1538,9 +1570,11 @@ class NaukriBot:
                             break
                         search_attempts += 1
                         log_info(
-                            f"[WARN] Search/filter did not land on a valid jobs results page (attempt {search_attempts}/2). Retrying once."
+                            f"[WARN] Search/filter did not land on a valid jobs results page (attempt {search_attempts}/{max_search_attempts})."
                         )
-                        if search_attempts >= 2:
+                        if self._advance_search_query():
+                            continue
+                        if search_attempts >= max_search_attempts:
                             log_info("[ERROR] Search/filter still failed to yield job results; skipping apply loop to avoid silent no-op.")
                             return None
                         try:
