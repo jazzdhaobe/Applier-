@@ -183,6 +183,10 @@ def main():
         if result is None:
             raise SystemExit(1)
 
+    if result.get("applied", 0) <= 0:
+        print("[ERROR] No jobs were applied; run failed.", file=sys.stderr)
+        raise SystemExit(1)
+
 
 if __name__ == "__main__":
     main()

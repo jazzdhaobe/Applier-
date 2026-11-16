@@ -57,6 +57,37 @@ class VerifyLoginCLIBehaviorTest(unittest.TestCase):
         self.assertEqual(config["search"], main_module.DEFAULT_SEARCH)
         self.assertNotIn("LangGraph", config["search"])
 
+    def test_apply_cli_fails_when_no_jobs_were_applied(self):
+        class DummyBot:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start_apply(self, tab):
+                return {"response": "applied successfully", "applied": 0}
+
+        config = {
+            "email": "user@example.com",
+            "password": None,
+            "username": "user@example.com",
+            "number": 10,
+            "headless": False,
+            "otp": None,
+            "storage_state_path": ".auth/storage_state.json",
+            "save_storage_state_path": ".auth/storage_state.json",
+            "search": main_module.DEFAULT_SEARCH,
+            "experience": 3,
+            "location": "",
+            "job_age": 7,
+        }
+
+        with patch.object(main_module, "NaukriBot", DummyBot):
+            with patch.object(main_module, "resolve_config", return_value=config):
+                with patch.object(sys, "argv", ["jab", "--email", "user@example.com", "--apply"]):
+                    with self.assertRaises(SystemExit) as exc:
+                        main_module.main()
+
+        self.assertEqual(exc.exception.code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

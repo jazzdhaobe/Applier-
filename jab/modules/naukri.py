@@ -62,7 +62,9 @@ def is_target_job_title(title: str) -> bool:
         normalized,
     )
     full_stack_focus = re.search(r"\bfull[\s-]*stack\b", normalized)
-    return bool(ai_focus or full_stack_focus)
+    software_engineer_focus = re.search(r"\bsoftware\s+engineer\b", normalized)
+    backend_frontend_focus = re.search(r"\b(back\s*end|front\s*end)\b", normalized)
+    return bool(ai_focus or full_stack_focus or software_engineer_focus or backend_frontend_focus)
 
 
 class ChatbotModel():

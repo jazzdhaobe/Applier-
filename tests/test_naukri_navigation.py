@@ -158,6 +158,10 @@ class TargetJobTitleTest(unittest.TestCase):
     def test_accepts_ai_and_full_stack_development_roles(self):
         accepted_titles = (
             "Senior AI Engineer",
+            "Mid-Level Software Engineer",
+            "Software Engineer 3",
+            "Senior Backend Engineer",
+            "Frontend Developer",
             "Generative AI Developer",
             "Machine Learning Researcher",
             "AI Full-Stack Engineer",
